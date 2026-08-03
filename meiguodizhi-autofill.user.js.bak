@@ -1,0 +1,789 @@
+// ==UserScript==
+// @name         美国地址生成器 · 通用一键填充 (meiguodizhi)
+// @name:en      US Address Generator · Universal Autofill
+// @namespace    https://github.com/yourname/meiguodizhi-autofill
+// @version      1.0.0
+// @description  以 meiguodizhi.com 为数据源，在任意网站一键拉取并填充虚拟身份/地址数据，支持收藏管理与使用记录。数据为该站声明的“仅供学习地址格式”的虚构测试数据。
+// @author       you
+// @match        *://*/*
+// @icon         https://www.meiguodizhi.com/favicon.ico
+// @connect      meiguodizhi.com
+// @connect      www.meiguodizhi.com
+// @grant        GM_xmlhttpRequest
+// @grant        GM_setValue
+// @grant        GM_getValue
+// @grant        GM_deleteValue
+// @grant        GM_registerMenuCommand
+// @run-at       document-idle
+// @noframes
+// @license      MIT
+// ==/UserScript==
+
+(function () {
+  'use strict';
+
+  /* =========================================================================
+   * 0. 常量 / 配置
+   * =======================================================================*/
+  const API = 'https://www.meiguodizhi.com/api/v1/dz';
+  const STORE = {
+    CURRENT: 'mgdz_current',     // 当前身份
+    FAVS: 'mgdz_favorites',      // 收藏夹 []
+    LOGS: 'mgdz_usage_logs',     // 使用记录 []
+    SETTINGS: 'mgdz_settings',   // 设置
+    MAPS: 'mgdz_field_maps',     // 按站点手动映射 { host: { signature: fieldKey } }
+    REGION: 'mgdz_region',       // 上次选择的地区
+    POS: 'mgdz_ball_pos',        // 悬浮球位置
+  };
+
+  const DEFAULT_SETTINGS = {
+    maskSensitive: true,         // 敏感字段遮罩
+    mode: 'all',                 // all | whitelist | blacklist
+    whitelist: [],
+    blacklist: [],
+    autoRecord: true,            // 填充时自动记录网址
+  };
+
+  /* ---- 地区（映射到接口 path） ---- */
+  const COUNTRIES = [
+    { label: '美国', path: '/', country: 'United States', aliases: ['united states', 'usa', 'us', 'america', '美国'] },
+    { label: '加拿大', path: '/ca-address', country: 'Canada', aliases: ['canada', '加拿大'] },
+    { label: '澳大利亚', path: '/au-address', country: 'Australia', aliases: ['australia', '澳大利亚'] },
+    { label: '英国', path: '/uk-address', country: 'United Kingdom', aliases: ['united kingdom', 'uk', 'britain', 'england', '英国'] },
+    { label: '日本', path: '/jp-address', country: 'Japan', aliases: ['japan', '日本'] },
+    { label: '韩国', path: '/kr-address', country: 'South Korea', aliases: ['korea', '韩国'] },
+    { label: '德国', path: '/de-address', country: 'Germany', aliases: ['germany', '德国'] },
+    { label: '法国', path: '/fr-address', country: 'France', aliases: ['france', '法国'] },
+    { label: '意大利', path: '/it-address', country: 'Italy', aliases: ['italy', '意大利'] },
+    { label: '西班牙', path: '/es-address', country: 'Spain', aliases: ['spain', '西班牙'] },
+    { label: '荷兰', path: '/nl-address', country: 'Netherlands', aliases: ['netherlands', '荷兰'] },
+    { label: '新加坡', path: '/sg-address', country: 'Singapore', aliases: ['singapore', '新加坡'] },
+    { label: '马来西亚', path: '/my-address', country: 'Malaysia', aliases: ['malaysia', '马来西亚'] },
+    { label: '俄罗斯', path: '/ru-address', country: 'Russia', aliases: ['russia', '俄罗斯'] },
+    { label: '中国', path: '/cn-address', country: 'China', aliases: ['china', '中国'] },
+    { label: '台湾', path: '/tw-address', country: 'Taiwan', aliases: ['taiwan', '台湾'] },
+    { label: '香港', path: '/hk-address', country: 'Hong Kong', aliases: ['hong kong', '香港'] },
+    { label: '泰国', path: '/th-address', country: 'Thailand', aliases: ['thailand', '泰国'] },
+    { label: '菲律宾', path: '/ph-address', country: 'Philippines', aliases: ['philippines', '菲律宾'] },
+    { label: '越南', path: '/vn-address', country: 'Vietnam', aliases: ['vietnam', '越南'] },
+    { label: '阿根廷', path: '/ar-address', country: 'Argentina', aliases: ['argentina', '阿根廷'] },
+    { label: '土耳其', path: '/tr-address', country: 'Turkey', aliases: ['turkey', '土耳其'] },
+  ];
+
+  const US_STATES = [
+    ['阿拉巴马', 'alabama'], ['阿拉斯加', 'alaska'], ['亚利桑那', 'arizona'], ['阿肯色', 'arkansas'],
+    ['加利福尼亚', 'california'], ['科罗拉多', 'colorado'], ['康涅狄格', 'connecticut'], ['特拉华', 'delaware'],
+    ['佛罗里达', 'florida'], ['佐治亚', 'georgia'], ['夏威夷', 'hawaii'], ['爱达荷', 'idaho'],
+    ['伊利诺伊', 'illinois'], ['印第安纳', 'indiana'], ['艾奥瓦', 'iowa'], ['堪萨斯', 'kansas'],
+    ['肯塔基', 'kentucky'], ['路易斯安那', 'lousiana'], ['缅因', 'maine'], ['马里兰', 'maryland'],
+    ['麻萨诸塞', 'massachusetts'], ['密歇根', 'michigan'], ['明尼苏达', 'minnesota'], ['密西西比', 'mississippi'],
+    ['密苏里', 'missouri'], ['蒙大拿', 'montana'], ['内布拉斯加', 'nebraska'], ['内华达', 'nevada'],
+    ['新罕布什尔', 'new-hampshire'], ['新泽西', 'new-jersey'], ['新墨西哥', 'new-mexico'], ['纽约', 'new-york'],
+    ['北卡罗来纳', 'north-carolina'], ['北达科他', 'north-dakota'], ['俄亥俄', 'ohio'], ['俄克拉何马', 'oklahoma'],
+    ['俄勒冈', 'oregon'], ['宾夕法尼亚', 'pennsylvania'], ['罗得岛', 'rhode-island'], ['南卡罗来纳', 'south-carolina'],
+    ['南达科他', 'south-dakota'], ['田纳西', 'tennessee'], ['得克萨斯', 'texas'], ['犹他', 'utah'],
+    ['佛蒙特', 'vermont'], ['弗吉尼亚', 'virginia'], ['华盛顿', 'washington'], ['西弗吉尼亚', 'west-virginia'],
+    ['威斯康星', 'wisconsin'], ['怀俄明', 'wyoming'],
+  ];
+
+  const US_CITIES = [
+    ['纽约', 'New-York'], ['洛杉矶', 'Los-Angeles'], ['芝加哥', 'Chicago'], ['休斯敦', 'Houston'],
+    ['菲尼克斯', 'Phoenix'], ['费城', 'Philadelphia'], ['圣安东尼奥', 'San-Antonio'], ['圣地亚哥', 'San-Diego'],
+    ['达拉斯', 'Dallas'], ['圣何塞', 'San-Jose'], ['奥斯汀', 'Austin'], ['旧金山', 'San-Francisco'],
+    ['西雅图', 'Seattle'], ['丹佛', 'Denver'], ['华盛顿', 'Washington'], ['波士顿', 'Boston'],
+    ['拉斯维加斯', 'Las-Vegas'], ['迈阿密', 'Miami'], ['亚特兰大', 'Atlanta'], ['底特律', 'Detroit'],
+  ];
+
+  /* ---- 字段展示分组 ---- */
+  const GROUPS = [
+    { title: '基本资料', keys: ['Full_Name', 'Gender', 'Birthday', 'Title', 'Hair_Color', 'Full_Name_Tran'] },
+    { title: '地址', keys: ['Address', 'City', 'State', 'State_Full', 'Zip_Code', 'Telephone', 'Temporary_mail'] },
+    { title: '就业 & 信用卡', keys: ['Credit_Card_Type', 'Credit_Card_Number', 'CVV2', 'Expires', 'Occupation', 'Company_Name', 'Company_Size', 'Employment_Status', 'Monthly_Salary', 'Social_Security_Number'] },
+    { title: '更多资料', keys: ['Username', 'Password', 'Height', 'Weight', 'Blood_Type', 'System', 'GUID', 'Browser_User_Agent', 'Educational_Background', 'Website', 'Security_Question', 'Security_Answer'] },
+  ];
+
+  const LABELS = {
+    Full_Name: '全名', Full_Name_Tran: '译名', Gender: '性别', Birthday: '生日', Title: '称谓', Hair_Color: '发色',
+    Address: '街道地址', City: '城市', State: '州', State_Full: '州全称', Zip_Code: '邮编', Telephone: '电话', Temporary_mail: '临时邮箱',
+    Credit_Card_Type: '卡类型', Credit_Card_Number: '信用卡号', CVV2: 'CVV2', Expires: '过期时间',
+    Occupation: '职业', Company_Name: '公司', Company_Size: '公司规模', Employment_Status: '就业状态', Monthly_Salary: '月薪', Social_Security_Number: 'SSN',
+    Username: '用户名', Password: '密码', Height: '身高', Weight: '体重', Blood_Type: '血型', System: '操作系统',
+    GUID: 'GUID', Browser_User_Agent: 'UA', Educational_Background: '教育', Website: '个人主页', Security_Question: '安全问题', Security_Answer: '问题答案',
+  };
+
+  const SENSITIVE = new Set(['Credit_Card_Number', 'CVV2', 'Social_Security_Number', 'Password']);
+
+  /* =========================================================================
+   * 1. 存储辅助
+   * =======================================================================*/
+  const gv = (k, d) => { try { return GM_getValue(k, d); } catch (e) { const v = localStorage.getItem(k); return v ? JSON.parse(v) : d; } };
+  const sv = (k, v) => { try { GM_setValue(k, v); } catch (e) { localStorage.setItem(k, JSON.stringify(v)); } };
+  const getSettings = () => Object.assign({}, DEFAULT_SETTINGS, gv(STORE.SETTINGS, {}));
+  const uid = () => 'id-' + Math.abs(hashCode(JSON.stringify(gv(STORE.LOGS, [])) + location.href + performance.now())).toString(36) + '-' + (gv('_seq', 0));
+  function nextSeq() { const n = (gv('_seq', 0) || 0) + 1; sv('_seq', n); return n; }
+  function hashCode(s) { let h = 0; for (let i = 0; i < s.length; i++) { h = (h << 5) - h + s.charCodeAt(i); h |= 0; } return h; }
+
+  /* =========================================================================
+   * 2. 数据源：跨域拉取
+   * =======================================================================*/
+  function fetchAddress(path) {
+    return new Promise((resolve, reject) => {
+      GM_xmlhttpRequest({
+        method: 'POST',
+        url: API,
+        headers: { 'Content-Type': 'application/json' },
+        data: JSON.stringify({ city: '', path: path || '/', method: 'refresh' }),
+        timeout: 15000,
+        onload: (r) => {
+          try {
+            const j = JSON.parse(r.responseText);
+            if (j && j.status === 'ok' && j.address) resolve(j.address);
+            else reject(new Error(j && j.status ? j.status : '返回异常'));
+          } catch (e) { reject(e); }
+        },
+        onerror: () => reject(new Error('网络错误')),
+        ontimeout: () => reject(new Error('请求超时')),
+      });
+    });
+  }
+
+  /* =========================================================================
+   * 3. 字段 → 表单 语义匹配定义
+   * =======================================================================*/
+  function firstName(d) { const p = String(d.Full_Name || '').trim().split(/\s+/); return p[0] || ''; }
+  function lastName(d) { const p = String(d.Full_Name || '').trim().split(/\s+/); return p.length > 1 ? p.slice(1).join(' ') : (p[0] || ''); }
+
+  // 顺序即优先级（先匹配到者胜出）
+  const SEMANTIC = [
+    { key: 'email', get: d => d.Temporary_mail, type: 'email', ac: ['email'], inc: /e-?mail|邮箱|电子邮件/i },
+    { key: 'firstName', get: firstName, ac: ['given-name'], inc: /first[\s_-]*name|given[\s_-]*name|forename|名字/i },
+    { key: 'lastName', get: lastName, ac: ['family-name'], inc: /last[\s_-]*name|sur[\s_-]*name|family[\s_-]*name|姓氏/i },
+    { key: 'fullName', get: d => d.Full_Name, ac: ['name'], inc: /full[\s_-]*name|your[\s_-]*name|recipient|contact[\s_-]*name|收货人|收件人|姓名|全名/i, exc: /user|first|last|company|nick|display|screen|card/i },
+    { key: 'phone', get: d => d.Telephone, type: 'tel', ac: ['tel', 'tel-national', 'tel-local'], inc: /phone|mobile|^tel$|telephone|contact[\s_-]*(number|no)|电话|手机|联系方式/i },
+    { key: 'zip', get: d => d.Zip_Code, ac: ['postal-code'], inc: /zip|postal|post[\s_-]*code|邮编|邮政编码/i },
+    { key: 'country', get: (d, region) => region.country, ac: ['country', 'country-name'], inc: /country|国家|国别/i },
+    { key: 'state', get: d => d.State_Full || d.State, ac: ['address-level1'], inc: /state|province|region|州|省份|省/i, exc: /united|country|zip|postal|street/i },
+    { key: 'city', get: d => d.City, ac: ['address-level2'], inc: /city|town|suburb|城市|市\/县|区县|城镇|所在市/i },
+    { key: 'address', get: d => d.Address, ac: ['street-address', 'address-line1', 'address-line2', 'address'], inc: /address|street|地址|街道|详细地址|门牌/i, exc: /e-?mail|\bip\b|city|state|country|province|zip|postal|邮箱|城市|省|邮编/i },
+    { key: 'company', get: d => d.Company_Name, ac: ['organization'], inc: /company|organi[sz]ation|employer|公司|单位|企业名称/i },
+    { key: 'ccName', get: d => d.Full_Name, ac: ['cc-name'], inc: /card[\s_-]*holder|name[\s_-]*on[\s_-]*card|持卡人|卡上姓名/i },
+    { key: 'ccNumber', get: d => d.Credit_Card_Number, ac: ['cc-number'], inc: /card[\s_-]*number|cc[\s_-]*num|credit[\s_-]*card|卡号|信用卡号/i },
+    { key: 'cvv', get: d => d.CVV2, ac: ['cc-csc'], inc: /cvv|cvc|csc|security[\s_-]*code|安全码|卡背/i },
+    { key: 'ccExp', get: d => d.Expires, ac: ['cc-exp'], inc: /expir|exp[\s_-]*date|有效期|过期时间/i },
+    { key: 'ssn', get: d => d.Social_Security_Number, ac: ['off'], inc: /\bssn\b|social[\s_-]*security|社会保障号/i },
+    { key: 'username', get: d => d.Username, ac: ['username'], inc: /user[\s_-]*name|login|account|用户名|账号|帐号/i, exc: /first|last|full|nick|display|company|real/i },
+    { key: 'password', get: d => d.Password, type: 'password', ac: ['new-password', 'current-password'], inc: /pass[\s_-]*word|passwd|密码|口令/i },
+  ];
+
+  function labelTextFor(el) {
+    let t = '';
+    if (el.id) { const l = document.querySelector('label[for="' + CSS.escape(el.id) + '"]'); if (l) t += ' ' + l.textContent; }
+    const wrap = el.closest('label'); if (wrap) t += ' ' + wrap.textContent;
+    // 前一个兄弟节点常作标签
+    let prev = el.previousElementSibling, hop = 0;
+    while (prev && hop < 2) { if (/^(label|span|div|td|th|p)$/i.test(prev.tagName)) t += ' ' + prev.textContent; prev = prev.previousElementSibling; hop++; }
+    return t.replace(/\s+/g, ' ').trim().slice(0, 120);
+  }
+
+  function signatureOf(el) {
+    return (el.getAttribute('name') || el.id || el.getAttribute('placeholder') || el.getAttribute('aria-label') || '').trim();
+  }
+
+  function scoreField(el, region) {
+    if (el.disabled || el.readOnly) return null;
+    const tag = el.tagName.toLowerCase();
+    const type = (el.getAttribute('type') || 'text').toLowerCase();
+    if (tag === 'input' && /hidden|submit|button|reset|checkbox|radio|file|image|range|color/.test(type)) return null;
+
+    const ac = (el.getAttribute('autocomplete') || '').toLowerCase().trim();
+    const nameId = ((el.getAttribute('name') || '') + ' ' + (el.id || '')).toLowerCase();
+    const ph = (el.getAttribute('placeholder') || '').toLowerCase();
+    const aria = (el.getAttribute('aria-label') || '').toLowerCase();
+    const label = labelTextFor(el).toLowerCase();
+
+    // 强类型信号
+    const typeHint = { email: 'email', tel: 'phone', password: 'password' }[type];
+
+    let best = null;
+    for (const f of SEMANTIC) {
+      let score = 0;
+      if (f.ac && ac && f.ac.includes(ac)) score = 100;
+      else {
+        if (f.exc && (f.exc.test(nameId) || f.exc.test(label) || f.exc.test(ph))) continue;
+        if (typeHint && typeHint === f.key) score = 92;
+        else if (f.inc.test(nameId)) score = 70;
+        else if (f.inc.test(aria)) score = 62;
+        else if (f.inc.test(label)) score = 58;
+        else if (f.inc.test(ph)) score = 46;
+      }
+      if (score > 0 && (!best || score > best.score)) best = { field: f, score };
+      if (best && best.score >= 100) break;
+    }
+    return best;
+  }
+
+  /* =========================================================================
+   * 4. 填充引擎
+   * =======================================================================*/
+  function setNativeValue(el, value) {
+    const proto = el.tagName === 'TEXTAREA' ? window.HTMLTextAreaElement.prototype : window.HTMLInputElement.prototype;
+    const setter = Object.getOwnPropertyDescriptor(proto, 'value') && Object.getOwnPropertyDescriptor(proto, 'value').set;
+    try { setter ? setter.call(el, value) : (el.value = value); } catch (e) { el.value = value; }
+    el.dispatchEvent(new Event('input', { bubbles: true }));
+    el.dispatchEvent(new Event('change', { bubbles: true }));
+  }
+
+  function fillSelect(el, value, aliases) {
+    const want = [value].concat(aliases || []).filter(Boolean).map(s => String(s).toLowerCase());
+    for (const opt of el.options) {
+      const t = (opt.textContent || '').toLowerCase().trim();
+      const v = (opt.value || '').toLowerCase().trim();
+      if (want.some(w => t === w || v === w || t.includes(w) || v.includes(w))) {
+        el.value = opt.value;
+        el.dispatchEvent(new Event('change', { bubbles: true }));
+        return true;
+      }
+    }
+    return false;
+  }
+
+  function fillPage(data, region) {
+    const maps = gv(STORE.MAPS, {});
+    const hostMap = maps[location.host] || {};
+    const inputs = Array.from(document.querySelectorAll('input, textarea, select'));
+    let filled = 0;
+    const usedFields = new Set();
+
+    for (const el of inputs) {
+      if (!isVisible(el)) continue;
+      const sig = signatureOf(el);
+      let fieldKey = hostMap[sig];      // 优先使用手动记忆映射
+      let field = fieldKey ? SEMANTIC.find(f => f.key === fieldKey) : null;
+
+      if (!field) {
+        const s = scoreField(el, region);
+        if (!s || s.score < 45) continue;
+        field = s.field;
+      }
+      const value = field.get(data, region);
+      if (value == null || value === '') continue;
+
+      if (el.tagName.toLowerCase() === 'select') {
+        const aliases = field.key === 'country' ? region.aliases
+          : field.key === 'state' ? [data.State, data.State_Full] : [];
+        if (fillSelect(el, value, aliases)) { filled++; usedFields.add(field.key); }
+      } else {
+        setNativeValue(el, value);
+        highlight(el);
+        filled++; usedFields.add(field.key);
+      }
+    }
+
+    if (filled && getSettings().autoRecord) recordUsage(data, region, filled);
+    toast(filled ? `已填充 ${filled} 个字段` : '未识别到可填充的表单字段，可试试「手动点选」', filled ? 'ok' : 'warn');
+    return filled;
+  }
+
+  function isVisible(el) {
+    if (!el.offsetParent && el.type !== 'hidden') { const r = el.getClientRects(); if (!r.length) return false; }
+    const st = getComputedStyle(el);
+    return st.display !== 'none' && st.visibility !== 'hidden' && st.opacity !== '0';
+  }
+
+  /* =========================================================================
+   * 5. 使用记录
+   * =======================================================================*/
+  function recordUsage(data, region, count) {
+    const logs = gv(STORE.LOGS, []);
+    logs.unshift({
+      id: 'log-' + nextSeq(),
+      host: location.host,
+      url: location.href,
+      title: document.title.slice(0, 80),
+      time: nowStr(),
+      region: region.label,
+      count: count,
+      summary: `${data.Full_Name} · ${data.City}, ${data.State} ${data.Zip_Code}`,
+      name: data.Full_Name,
+    });
+    sv(STORE.LOGS, logs.slice(0, 500));
+  }
+  function nowStr() {
+    const d = new Date();
+    const p = n => String(n).padStart(2, '0');
+    return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
+  }
+
+  /* =========================================================================
+   * 6. 收藏
+   * =======================================================================*/
+  function addFavorite(data, region, note) {
+    const favs = gv(STORE.FAVS, []);
+    favs.unshift({
+      id: 'fav-' + nextSeq(),
+      time: nowStr(),
+      region: region.label,
+      path: region.path,
+      note: note || '',
+      data: data,
+    });
+    sv(STORE.FAVS, favs);
+    toast('已收藏', 'ok');
+  }
+
+  /* =========================================================================
+   * 7. UI（Shadow DOM）
+   * =======================================================================*/
+  let root, panel, state = {
+    data: gv(STORE.CURRENT, null),
+    region: gv(STORE.REGION, COUNTRIES[0]),
+    tab: 'current',
+    picking: false,
+    open: false,
+  };
+
+  const CSS = window.CSS || { escape: s => s.replace(/[^a-zA-Z0-9_-]/g, '\\$&') };
+
+  const STYLE = `
+  :host { all: initial; }
+  * { box-sizing: border-box; font-family: -apple-system, "Segoe UI", "Microsoft YaHei", sans-serif; }
+  .ball { position: fixed; z-index: 2147483646; width: 46px; height: 46px; border-radius: 50%;
+    background: linear-gradient(135deg,#4f7cff,#7a5cff); color:#fff; display:flex; align-items:center; justify-content:center;
+    font-size: 20px; cursor: grab; box-shadow: 0 4px 16px rgba(0,0,0,.28); user-select:none; transition: transform .15s; }
+  .ball:hover { transform: scale(1.08); }
+  .ball.dragging { cursor: grabbing; }
+  .panel { position: fixed; z-index: 2147483647; width: 384px; max-width: calc(100vw - 24px); height: 560px; max-height: calc(100vh - 24px);
+    background:#fff; color:#1f2430; border-radius: 14px; box-shadow: 0 12px 48px rgba(0,0,0,.32); display:none; flex-direction:column; overflow:hidden; }
+  .panel.show { display:flex; }
+  .hd { display:flex; align-items:center; gap:8px; padding:12px 14px; background:linear-gradient(135deg,#4f7cff,#7a5cff); color:#fff; }
+  .hd b { font-size:14px; flex:1; }
+  .hd .x { cursor:pointer; opacity:.85; font-size:18px; line-height:1; }
+  .hd .x:hover { opacity:1; }
+  .tabs { display:flex; border-bottom:1px solid #eef0f4; }
+  .tabs div { flex:1; text-align:center; padding:9px 0; font-size:13px; cursor:pointer; color:#6b7280; border-bottom:2px solid transparent; }
+  .tabs div.on { color:#4f7cff; border-bottom-color:#4f7cff; font-weight:600; }
+  .body { flex:1; overflow-y:auto; padding:12px 14px; }
+  .row { display:flex; gap:8px; margin-bottom:10px; }
+  select, input[type=text], textarea { width:100%; padding:7px 9px; border:1px solid #d9dde5; border-radius:8px; font-size:13px; color:#1f2430; background:#fff; }
+  select:focus, input:focus, textarea:focus { outline:none; border-color:#4f7cff; }
+  .btn { border:none; border-radius:8px; padding:8px 12px; font-size:13px; cursor:pointer; font-weight:600; }
+  .btn.pri { background:#4f7cff; color:#fff; } .btn.pri:hover { background:#3d68f0; }
+  .btn.sec { background:#eef1f7; color:#374151; } .btn.sec:hover { background:#e3e8f2; }
+  .btn.gho { background:transparent; color:#4f7cff; border:1px solid #cdd7ff; }
+  .btn.warn { background:#fff1f0; color:#e5484d; }
+  .btn:disabled { opacity:.5; cursor:not-allowed; }
+  .grp { margin-bottom:14px; }
+  .grp h4 { margin:0 0 6px; font-size:12px; color:#8a90a2; font-weight:600; }
+  .kv { display:flex; align-items:center; gap:6px; padding:5px 6px; border-radius:7px; font-size:12.5px; }
+  .kv:hover { background:#f5f7fb; }
+  .kv .k { width:70px; color:#8a90a2; flex:none; }
+  .kv .v { flex:1; word-break:break-all; color:#1f2430; }
+  .kv .cp { opacity:0; cursor:pointer; color:#4f7cff; font-size:11px; flex:none; }
+  .kv:hover .cp { opacity:1; }
+  .masked { letter-spacing:1px; }
+  .actions { display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-bottom:12px; }
+  .actions .btn { width:100%; }
+  .item { border:1px solid #eef0f4; border-radius:10px; padding:10px; margin-bottom:8px; }
+  .item .t { font-size:13px; font-weight:600; margin-bottom:2px; }
+  .item .s { font-size:12px; color:#8a90a2; margin-bottom:6px; word-break:break-all; }
+  .item .ops { display:flex; gap:6px; flex-wrap:wrap; }
+  .item .ops .btn { padding:5px 9px; font-size:12px; }
+  .empty { text-align:center; color:#a3a9b8; padding:40px 0; font-size:13px; }
+  .set-row { display:flex; align-items:center; justify-content:space-between; padding:9px 0; border-bottom:1px solid #f2f4f8; font-size:13px; }
+  .switch { position:relative; width:40px; height:22px; }
+  .switch input { opacity:0; width:0; height:0; }
+  .slider { position:absolute; inset:0; background:#cfd4de; border-radius:22px; transition:.2s; cursor:pointer; }
+  .slider:before { content:""; position:absolute; height:16px; width:16px; left:3px; top:3px; background:#fff; border-radius:50%; transition:.2s; }
+  input:checked + .slider { background:#4f7cff; }
+  input:checked + .slider:before { transform:translateX(18px); }
+  .toast { position:fixed; z-index:2147483647; left:50%; bottom:40px; transform:translateX(-50%); background:#1f2430; color:#fff;
+    padding:9px 16px; border-radius:8px; font-size:13px; box-shadow:0 6px 24px rgba(0,0,0,.3); opacity:0; transition:opacity .2s; }
+  .toast.show { opacity:1; }
+  .toast.ok { background:#1f9d55; } .toast.warn { background:#c47f17; } .toast.err { background:#e5484d; }
+  .pickmenu { position:fixed; z-index:2147483647; background:#fff; border-radius:10px; box-shadow:0 8px 32px rgba(0,0,0,.3); padding:6px; max-height:300px; overflow:auto; width:200px; }
+  .pickmenu div { padding:6px 8px; font-size:12.5px; border-radius:6px; cursor:pointer; display:flex; justify-content:space-between; gap:8px; }
+  .pickmenu div:hover { background:#eef1f7; }
+  .pickmenu .pv { color:#8a90a2; max-width:100px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .note { font-size:11px; color:#a3a9b8; margin-top:8px; line-height:1.5; }
+  .hl-flash { outline:2px solid #4f7cff !important; outline-offset:1px; transition:outline .3s; }
+  `;
+
+  function buildUI() {
+    const host = document.createElement('div');
+    host.id = 'mgdz-root';
+    (document.body || document.documentElement).appendChild(host);
+    root = host.attachShadow({ mode: 'open' });
+    const style = document.createElement('style'); style.textContent = STYLE; root.appendChild(style);
+
+    const ball = document.createElement('div');
+    ball.className = 'ball'; ball.textContent = '🇺🇸'; ball.title = '美国地址生成器（拖拽移动 / 单击展开）';
+    root.appendChild(ball);
+    restorePos(ball);
+    makeDraggable(ball, () => togglePanel());
+
+    panel = document.createElement('div');
+    panel.className = 'panel';
+    root.appendChild(panel);
+    renderPanel();
+  }
+
+  function restorePos(ball) {
+    const p = gv(STORE.POS, null);
+    if (p) { ball.style.left = p.left; ball.style.top = p.top; ball.style.right = 'auto'; ball.style.bottom = 'auto'; }
+    else { ball.style.right = '18px'; ball.style.bottom = '90px'; }
+  }
+
+  function makeDraggable(el, onClick) {
+    let sx, sy, ox, oy, moved = false, down = false;
+    el.addEventListener('mousedown', e => {
+      down = true; moved = false; sx = e.clientX; sy = e.clientY;
+      const r = el.getBoundingClientRect(); ox = r.left; oy = r.top; el.classList.add('dragging');
+      e.preventDefault();
+    });
+    window.addEventListener('mousemove', e => {
+      if (!down) return;
+      if (Math.abs(e.clientX - sx) > 3 || Math.abs(e.clientY - sy) > 3) moved = true;
+      if (moved) {
+        const nl = Math.min(Math.max(0, ox + e.clientX - sx), innerWidth - el.offsetWidth);
+        const nt = Math.min(Math.max(0, oy + e.clientY - sy), innerHeight - el.offsetHeight);
+        el.style.left = nl + 'px'; el.style.top = nt + 'px'; el.style.right = 'auto'; el.style.bottom = 'auto';
+      }
+    });
+    window.addEventListener('mouseup', () => {
+      if (!down) return; down = false; el.classList.remove('dragging');
+      if (moved) sv(STORE.POS, { left: el.style.left, top: el.style.top });
+      else onClick();
+    });
+  }
+
+  function togglePanel(force) {
+    state.open = force != null ? force : !state.open;
+    panel.classList.toggle('show', state.open);
+    if (state.open) { positionPanel(); renderPanel(); }
+  }
+  function positionPanel() {
+    const ball = root.querySelector('.ball').getBoundingClientRect();
+    let left = ball.left - 384 - 10; if (left < 8) left = Math.min(ball.right + 10, innerWidth - 384 - 8);
+    let top = Math.min(ball.top, innerHeight - 560 - 8); if (top < 8) top = 8;
+    panel.style.left = left + 'px'; panel.style.top = top + 'px';
+  }
+
+  /* ---------- 渲染 ---------- */
+  function renderPanel() {
+    if (!state.open) return;
+    panel.innerHTML = '';
+    panel.appendChild(el('div', 'hd', [
+      el('b', '', '美国地址生成器 · 一键填充'),
+      elx('span', 'x', '✕', { click: () => togglePanel(false) }),
+    ]));
+    const tabs = el('div', 'tabs');
+    [['current', '当前'], ['favs', '收藏'], ['logs', '记录'], ['settings', '设置']].forEach(([k, t]) => {
+      tabs.appendChild(elx('div', state.tab === k ? 'on' : '', t, { click: () => { state.tab = k; renderPanel(); } }));
+    });
+    panel.appendChild(tabs);
+    const body = el('div', 'body'); panel.appendChild(body);
+    ({ current: renderCurrent, favs: renderFavs, logs: renderLogs, settings: renderSettings }[state.tab])(body);
+  }
+
+  function renderCurrent(body) {
+    // 地区选择
+    const rrow = el('div', 'row');
+    const selC = document.createElement('select');
+    COUNTRIES.forEach(c => selC.appendChild(opt(c.path, c.label, c.path === state.region.path && !state.region.sub)));
+    selC.onchange = () => { const c = COUNTRIES.find(x => x.path === selC.value); state.region = Object.assign({}, c); persistRegion(); renderPanel(); };
+    rrow.appendChild(selC);
+
+    // 美国二级：州 / 城市
+    if (state.region.country === 'United States') {
+      const selS = document.createElement('select');
+      selS.appendChild(opt('/', '— 全美随机 —', false));
+      const og1 = document.createElement('optgroup'); og1.label = '按州';
+      US_STATES.forEach(([cn, sl]) => og1.appendChild(opt('/usa-address/' + sl, cn, state.region.path === '/usa-address/' + sl)));
+      const og2 = document.createElement('optgroup'); og2.label = '按热门城市';
+      US_CITIES.forEach(([cn, sl]) => og2.appendChild(opt('/usa-address/hot-city-' + sl, cn, state.region.path === '/usa-address/hot-city-' + sl)));
+      selS.appendChild(og1); selS.appendChild(og2);
+      selS.value = state.region.path;
+      selS.onchange = () => {
+        state.region = Object.assign({}, COUNTRIES[0], { path: selS.value, sub: selS.value !== '/', label: selS.selectedOptions[0].text.replace(/^—|—$/g, '').trim() || '美国' });
+        state.region.country = 'United States'; state.region.aliases = COUNTRIES[0].aliases;
+        persistRegion(); renderPanel();
+      };
+      rrow.appendChild(selS);
+    }
+    body.appendChild(rrow);
+
+    // 操作
+    const gen = elx('button', 'btn pri', '🎲 换一批', { click: doGenerate });
+    gen.style.flex = '1';
+    body.appendChild(el('div', 'row', [gen]));
+
+    if (!state.data) { body.appendChild(el('div', 'empty', '点击「换一批」获取一条身份数据')); return; }
+
+    const acts = el('div', 'actions');
+    acts.appendChild(elx('button', 'btn pri', '⚡ 填充此页', { click: () => fillPage(state.data, state.region) }));
+    acts.appendChild(elx('button', 'btn sec', state.picking ? '● 点选中…' : '🎯 手动点选', { click: togglePick }));
+    acts.appendChild(elx('button', 'btn gho', '★ 收藏', { click: () => askNote(n => addFavorite(state.data, state.region, n)) }));
+    acts.appendChild(elx('button', 'btn sec', '⧉ 复制全部', { click: copyAll }));
+    body.appendChild(acts);
+
+    const s = getSettings();
+    GROUPS.forEach(g => {
+      const kvs = g.keys.filter(k => state.data[k] != null && state.data[k] !== '');
+      if (!kvs.length) return;
+      const grp = el('div', 'grp', [el('h4', '', g.title)]);
+      kvs.forEach(k => {
+        const masked = s.maskSensitive && SENSITIVE.has(k);
+        const vEl = el('span', 'v' + (masked ? ' masked' : ''), masked ? mask(state.data[k]) : state.data[k]);
+        if (masked) { vEl.style.cursor = 'pointer'; vEl.title = '点击显示'; vEl.onclick = () => { vEl.textContent = state.data[k]; vEl.classList.remove('masked'); }; }
+        grp.appendChild(el('div', 'kv', [
+          el('span', 'k', LABELS[k] || k), vEl,
+          elx('span', 'cp', '复制', { click: () => copy(state.data[k]) }),
+        ]));
+      });
+      body.appendChild(grp);
+    });
+    body.appendChild(el('div', 'note', '数据来自 meiguodizhi.com，为“仅供学习地址格式”的虚构测试数据，请勿用于非法用途。'));
+  }
+
+  function renderFavs(body) {
+    const favs = gv(STORE.FAVS, []);
+    const tools = el('div', 'row');
+    tools.appendChild(elx('button', 'btn sec', '⬆ 导入', { click: importData }));
+    tools.appendChild(elx('button', 'btn sec', '⬇ 导出', { click: () => exportData('favs') }));
+    body.appendChild(tools);
+    if (!favs.length) { body.appendChild(el('div', 'empty', '暂无收藏。在「当前」页点 ★ 收藏一条身份。')); return; }
+    favs.forEach(f => {
+      const d = f.data;
+      const item = el('div', 'item', [
+        el('div', 't', `${d.Full_Name || '—'}　·　${f.region}`),
+        el('div', 's', `${d.Address || ''}, ${d.City || ''}, ${d.State || ''} ${d.Zip_Code || ''}` + (f.note ? `　📝${f.note}` : '') + `　·　${f.time}`),
+        el('div', 'ops', [
+          elx('button', 'btn pri', '填充', { click: () => { state.data = d; state.region = { label: f.region, path: f.path, country: guessCountry(f), aliases: [] }; fillPage(d, state.region); } }),
+          elx('button', 'btn sec', '设为当前', { click: () => { state.data = d; sv(STORE.CURRENT, d); state.tab = 'current'; renderPanel(); } }),
+          elx('button', 'btn sec', '备注', { click: () => askNote(n => { f.note = n; sv(STORE.FAVS, favs); renderPanel(); }, f.note) }),
+          elx('button', 'btn warn', '删除', { click: () => { sv(STORE.FAVS, favs.filter(x => x.id !== f.id)); renderPanel(); } }),
+        ]),
+      ]);
+      body.appendChild(item);
+    });
+  }
+
+  function renderLogs(body) {
+    const logs = gv(STORE.LOGS, []);
+    const tools = el('div', 'row');
+    tools.appendChild(elx('button', 'btn sec', '⬇ 导出', { click: () => exportData('logs') }));
+    tools.appendChild(elx('button', 'btn warn', '清空记录', { click: () => { if (confirm('确定清空所有使用记录？')) { sv(STORE.LOGS, []); renderPanel(); } } }));
+    body.appendChild(tools);
+    if (!logs.length) { body.appendChild(el('div', 'empty', '暂无使用记录。填充表单后会自动记录网址。')); return; }
+    // 按 host 分组
+    const byHost = {};
+    logs.forEach(l => { (byHost[l.host] = byHost[l.host] || []).push(l); });
+    Object.keys(byHost).forEach(host => {
+      const grp = el('div', 'grp', [el('h4', '', `${host}（${byHost[host].length}）`)]);
+      byHost[host].slice(0, 30).forEach(l => {
+        grp.appendChild(el('div', 'item', [
+          el('div', 't', l.summary),
+          el('div', 's', `${l.time}　·　填充${l.count}项　·　${l.region}`),
+          el('div', 'ops', [
+            elx('button', 'btn sec', '打开网址', { click: () => window.open(l.url, '_blank', 'noopener') }),
+            elx('button', 'btn sec', '复制网址', { click: () => copy(l.url) }),
+          ]),
+        ]));
+      });
+      body.appendChild(grp);
+    });
+  }
+
+  function renderSettings(body) {
+    const s = getSettings();
+    const mk = (label, key, desc) => {
+      const wrap = el('div', 'set-row');
+      wrap.appendChild(el('span', '', label + (desc ? `　` : '')));
+      const sw = document.createElement('label'); sw.className = 'switch';
+      const inp = document.createElement('input'); inp.type = 'checkbox'; inp.checked = !!s[key];
+      inp.onchange = () => { s[key] = inp.checked; sv(STORE.SETTINGS, s); };
+      const sl = document.createElement('span'); sl.className = 'slider';
+      sw.appendChild(inp); sw.appendChild(sl); wrap.appendChild(sw);
+      body.appendChild(wrap);
+    };
+    mk('敏感字段遮罩（卡号/CVV/SSN/密码）', 'maskSensitive');
+    mk('填充时自动记录网址', 'autoRecord');
+
+    body.appendChild(el('div', 'note', '生效范围：当前脚本在所有网站注入悬浮球（@match *://*/*）。如需仅在部分站点显示，请在油猴管理面板调整脚本的“运行网站”设置。'));
+
+    const danger = el('div', 'grp');
+    danger.style.marginTop = '16px';
+    danger.appendChild(el('h4', '', '数据维护'));
+    danger.appendChild(el('div', 'row', [
+      elx('button', 'btn sec', '导出全部数据', { click: () => exportData('all') }),
+      elx('button', 'btn sec', '导入数据', { click: importData }),
+    ]));
+    danger.appendChild(el('div', 'row', [
+      elx('button', 'btn warn', '清空手动映射', { click: () => { sv(STORE.MAPS, {}); toast('已清空本机所有站点的字段映射', 'ok'); } }),
+    ]));
+    body.appendChild(danger);
+    body.appendChild(el('div', 'note', `版本 1.0.0　·　收藏 ${gv(STORE.FAVS, []).length} 条　·　记录 ${gv(STORE.LOGS, []).length} 条`));
+  }
+
+  /* =========================================================================
+   * 8. 交互动作
+   * =======================================================================*/
+  async function doGenerate() {
+    const btns = root.querySelectorAll('.btn.pri');
+    toast('生成中…');
+    try {
+      const data = await fetchAddress(state.region.path);
+      state.data = data; sv(STORE.CURRENT, data); persistRegion();
+      renderPanel(); toast('已生成', 'ok');
+    } catch (e) { toast('生成失败：' + e.message, 'err'); }
+  }
+  function persistRegion() { sv(STORE.REGION, state.region); }
+
+  function copy(text) {
+    try { navigator.clipboard.writeText(text); toast('已复制', 'ok'); }
+    catch (e) { const ta = document.createElement('textarea'); ta.value = text; document.body.appendChild(ta); ta.select(); document.execCommand('copy'); ta.remove(); toast('已复制', 'ok'); }
+  }
+  function copyAll() {
+    const d = state.data; if (!d) return;
+    const lines = GROUPS.flatMap(g => g.keys.filter(k => d[k]).map(k => `${LABELS[k] || k}: ${d[k]}`));
+    copy(lines.join('\n'));
+  }
+
+  function togglePick() {
+    state.picking = !state.picking;
+    document.body.style.cursor = state.picking ? 'crosshair' : '';
+    toast(state.picking ? '点选模式：点击页面上的输入框，再选择要填入的字段' : '已退出点选', state.picking ? 'ok' : 'warn');
+    renderPanel();
+  }
+
+  // 点选模式：捕获页面输入框点击
+  document.addEventListener('click', function (e) {
+    if (!state.picking || !state.data) return;
+    const path = e.composedPath();
+    if (path.some(n => n.id === 'mgdz-root')) return; // 忽略面板自身
+    const el = path.find(n => n.tagName && /^(input|textarea|select)$/i.test(n.tagName));
+    if (!el) return;
+    e.preventDefault(); e.stopPropagation();
+    showPickMenu(el, e.clientX, e.clientY);
+  }, true);
+
+  function showPickMenu(target, x, y) {
+    root.querySelectorAll('.pickmenu').forEach(m => m.remove());
+    const menu = el('div', 'pickmenu');
+    const d = state.data;
+    const entries = [];
+    SEMANTIC.forEach(f => { const v = f.get(d, state.region); if (v) entries.push([f, v]); });
+    // 也允许直接选原始字段
+    entries.forEach(([f, v]) => {
+      menu.appendChild(elx('div', '', [document.createTextNode(fieldLabel(f.key)), el('span', 'pv', String(v))], {
+        click: () => {
+          if (target.tagName.toLowerCase() === 'select') fillSelect(target, v, f.key === 'country' ? state.region.aliases : []);
+          else { setNativeValue(target, v); highlight(target); }
+          // 记忆映射
+          const maps = gv(STORE.MAPS, {}); const sig = signatureOf(target);
+          if (sig) { maps[location.host] = maps[location.host] || {}; maps[location.host][sig] = f.key; sv(STORE.MAPS, maps); }
+          menu.remove();
+          if (getSettings().autoRecord) recordUsage(d, state.region, 1);
+          toast('已填入并记住该字段', 'ok');
+        }
+      }));
+    });
+    menu.style.left = Math.min(x, innerWidth - 210) + 'px';
+    menu.style.top = Math.min(y, innerHeight - 310) + 'px';
+    root.appendChild(menu);
+    setTimeout(() => document.addEventListener('click', function close(ev) {
+      if (!ev.composedPath().includes(menu)) { menu.remove(); document.removeEventListener('click', close, true); }
+    }, true), 0);
+  }
+
+  function fieldLabel(key) {
+    const m = { email: '邮箱', firstName: '名(First)', lastName: '姓(Last)', fullName: '全名', phone: '电话', zip: '邮编',
+      country: '国家', state: '州/省', city: '城市', address: '街道地址', company: '公司', ccName: '持卡人',
+      ccNumber: '信用卡号', cvv: 'CVV', ccExp: '有效期', ssn: 'SSN', username: '用户名', password: '密码' };
+    return m[key] || key;
+  }
+
+  /* ---------- 导入导出 ---------- */
+  function exportData(kind) {
+    const payload = kind === 'all'
+      ? { favs: gv(STORE.FAVS, []), logs: gv(STORE.LOGS, []), maps: gv(STORE.MAPS, {}), settings: getSettings() }
+      : kind === 'favs' ? { favs: gv(STORE.FAVS, []) } : { logs: gv(STORE.LOGS, []) };
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+    const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
+    a.download = `mgdz-${kind}-${Date.now()}.json`; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 3000);
+    toast('已导出', 'ok');
+  }
+  function importData() {
+    const inp = document.createElement('input'); inp.type = 'file'; inp.accept = 'application/json';
+    inp.onchange = () => {
+      const file = inp.files[0]; if (!file) return;
+      const fr = new FileReader();
+      fr.onload = () => {
+        try {
+          const j = JSON.parse(fr.result);
+          if (j.favs) sv(STORE.FAVS, mergeById(gv(STORE.FAVS, []), j.favs));
+          if (j.logs) sv(STORE.LOGS, mergeById(gv(STORE.LOGS, []), j.logs));
+          if (j.maps) sv(STORE.MAPS, Object.assign(gv(STORE.MAPS, {}), j.maps));
+          if (j.settings) sv(STORE.SETTINGS, Object.assign(getSettings(), j.settings));
+          renderPanel(); toast('导入成功', 'ok');
+        } catch (e) { toast('导入失败：文件格式错误', 'err'); }
+      };
+      fr.readAsText(file);
+    };
+    inp.click();
+  }
+  function mergeById(a, b) {
+    const map = {}; [...a, ...b].forEach(x => { map[x.id || JSON.stringify(x.data || x)] = x; });
+    return Object.values(map);
+  }
+
+  /* =========================================================================
+   * 9. 小工具
+   * =======================================================================*/
+  function el(tag, cls, kids) {
+    const n = document.createElement(tag); if (cls) n.className = cls;
+    if (kids != null) {
+      if (typeof kids === 'string') n.textContent = kids;
+      else if (Array.isArray(kids)) kids.forEach(k => k && n.appendChild(typeof k === 'string' ? document.createTextNode(k) : k));
+      else n.appendChild(kids);
+    }
+    return n;
+  }
+  function elx(tag, cls, kids, ev) {
+    const n = el(tag, cls, kids);
+    if (ev) Object.keys(ev).forEach(k => n.addEventListener(k, ev[k]));
+    return n;
+  }
+  function opt(value, text, selected) { const o = document.createElement('option'); o.value = value; o.textContent = text; if (selected) o.selected = true; return o; }
+  function mask(v) { v = String(v); return v.length <= 4 ? '••••' : v.slice(0, 2) + '••••••' + v.slice(-2); }
+  function guessCountry(f) { const c = COUNTRIES.find(x => x.path === f.path || x.label === f.region); return c ? c.country : (f.data && f.data.State_Full ? 'United States' : ''); }
+  function highlight(elm) { try { elm.classList.add('hl-flash'); setTimeout(() => elm.classList.remove('hl-flash'), 800); } catch (e) {} }
+
+  function askNote(cb, def) {
+    const v = prompt('备注（可留空）：', def || '');
+    if (v !== null) cb(v);
+  }
+
+  let toastEl, toastT;
+  function toast(msg, kind) {
+    if (!toastEl) { toastEl = el('div', 'toast'); root.appendChild(toastEl); }
+    toastEl.className = 'toast ' + (kind || '') + ' show';
+    toastEl.textContent = msg;
+    clearTimeout(toastT); toastT = setTimeout(() => toastEl.classList.remove('show'), 2200);
+  }
+
+  /* =========================================================================
+   * 10. 启动
+   * =======================================================================*/
+  function start() {
+    if (window.top !== window) return;             // 仅顶层窗口
+    if (document.getElementById('mgdz-root')) return;
+    buildUI();
+    try {
+      GM_registerMenuCommand('打开面板', () => togglePanel(true));
+      GM_registerMenuCommand('换一批并填充此页', async () => { await doGenerate(); fillPage(state.data, state.region); });
+    } catch (e) {}
+  }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start);
+  else start();
+})();
