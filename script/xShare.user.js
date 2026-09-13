@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         X 推文一键生成分享卡片 & 视频深度解析助手 (多线程版)
 // @namespace    http://tampermonkey.net/
-// @version      6.4
+// @version      6.8
 // @description  自定义生成推文图片卡片，支持长文，新增视频极速无水印解析与直接强制下载本地（支持多线程并发，带真实进度）。
 // @author       Assistant
 // @match        https://x.com/*
@@ -22,6 +22,7 @@
 
 (function () {
     'use strict';
+
 
     const processed = new WeakSet();
     const STORAGE_KEY_WIDTH = 'sc_custom_card_width';
@@ -238,7 +239,7 @@
         const seenSrc = new Set();
         const mediaEls = collectArticleMediaEls(mediaScope || root);
 
-        const textRaw = [...rich.querySelectorAll('[data-block="true"], .longform-unstyled, .public-DraftStyleDefault-block, h1, h2, h3, blockquote, hr')];
+        const textRaw = [...rich.querySelectorAll('[data-block="true"], .longform-unstyled, .public-DraftStyleDefault-block, h1, h2, h3, blockquote, hr, pre, code, [data-testid*="markdown" i], [data-testid*="code" i]')];
         const textEls = textRaw.filter(el => {
             if (textRaw.some(other => other !== el && el.contains(other))) return false;
             if (mediaEls.some(m => el.contains(m))) {
@@ -308,6 +309,11 @@
             if (!text) {
                 const brOnly = el.querySelector('br') && !el.querySelector('span[data-text="true"]');
                 if (brOnly) blocks.push({ type: 'spacer' });
+                return;
+            }
+            if (el.tagName === 'PRE' || el.tagName === 'CODE' || /markdown|code-block|CodeBlock/i.test(el.className || el.getAttribute && el.getAttribute('data-testid') || '')) {
+                const codeText = (el.innerText || '').replace(/\u00a0/g, ' ').replace(/\n+$/, '');
+                if (codeText) blocks.push({ type: 'code', text: codeText });
                 return;
             }
             if (isArticleQuote(el)) {
@@ -860,19 +866,27 @@
         });
     }
 
+    function sanitizeFilenamePart(s, max) {
+        return String(s || '')
+            .replace(/[\\/:*?"<>|]/g, '')
+            .replace(/\s+/g, '_')
+            .replace(/_+/g, '_')
+            .replace(/^[_.]+|[_.]+$/g, '')
+            .slice(0, max || 40);
+    }
+
     function generateDefaultFilename(data) {
-        const handleClean = (data.handle || '').replace(/^@/, '').trim();
-        const nameClean = (data.name || '').replace(/[\\/:*?"<>|\s]/g, '_').slice(0, 15);
-        const author = handleClean || nameClean || 'post';
-
         const now = new Date();
-        const year = now.getFullYear();
-        const month = String(now.getMonth() + 1).padStart(2, '0');
-        const day = String(now.getDate()).padStart(2, '0');
-        const hour = String(now.getHours()).padStart(2, '0');
-        const min = String(now.getMinutes()).padStart(2, '0');
-        const timeStamp = `${year}${month}${day}_${hour}${min}`;
-
+        const p = n => String(n).padStart(2, '0');
+        const timeStamp = `${now.getFullYear()}${p(now.getMonth() + 1)}${p(now.getDate())}_${p(now.getHours())}${p(now.getMinutes())}`;
+        const titleSrc = (data && (data.articleTitle || data.title)) || '';
+        const title = (data && data.isArticle) || titleSrc
+            ? sanitizeFilenamePart(titleSrc, 48)
+            : '';
+        if (title) return `x_${title}_${timeStamp}`;
+        const handleClean = (data.handle || '').replace(/^@/, '').trim();
+        const nameClean = sanitizeFilenamePart(data.name, 15);
+        const author = handleClean || nameClean || 'post';
         return `x_${author}_${timeStamp}`;
     }
 
@@ -911,6 +925,17 @@
     function entityValue(entry) {
         if (!entry) return null;
         return (entry.value && typeof entry.value === 'object') ? entry.value : entry;
+    }
+
+    function blocksFromMarkdownEntity(raw) {
+        const src = String(raw || '').replace(/\r\n/g, '\n').trim();
+        if (!src) return [];
+        const m = src.match(/^```([^\n]*)\n([\s\S]*?)\n```$/);
+        if (m) return [{ type: 'code', lang: String(m[1] || '').trim(), text: m[2].replace(/\n+$/, '') }];
+        const m2 = src.match(/^```([^\n]*)\n([\s\S]*?)```$/);
+        if (m2) return [{ type: 'code', lang: String(m2[1] || '').trim(), text: m2[2].replace(/\n+$/, '') }];
+        if (/^\s*\|.+\|/m.test(src)) return [{ type: 'code', lang: 'table', text: src }];
+        return [{ type: 'text', html: escapeHtml(src).replace(/\n/g, '<br>') }];
     }
 
     function mapArticleFromFx(article) {
@@ -958,6 +983,11 @@
                     if (src) blocks.push(caption ? { type: 'image', src, caption } : { type: 'image', src });
                 } else if (etype === 'DIVIDER' || etype === 'HORIZONTAL_RULE') {
                     blocks.push({ type: 'divider' });
+                } else if (etype === 'MARKDOWN') {
+                    blocksFromMarkdownEntity(ent && ent.data && ent.data.markdown).forEach(x => blocks.push(x));
+                } else if (etype === 'TWEET' || etype === 'POST') {
+                    const tid = ent && ent.data && (ent.data.tweet_id || ent.data.tweetId || ent.data.id || ent.data.post_id);
+                    blocks.push({ type: 'embed', tweetId: tid ? String(tid) : '', html: tid ? '内嵌帖 ' + String(tid) : '内嵌帖' });
                 }
                 return;
             }
@@ -1052,7 +1082,7 @@
                 <div class="scp-title">
                     <span class="scp-title-icon">${ICONS.cardSparkle}</span>
                     <span>推文分享卡片生成器</span>
-                    <span class="scp-version-badge">v6.4</span>
+                    <span class="scp-version-badge">v6.8</span>
                 </div>
                 <button id="scp-close" title="关闭窗口">${ICONS.close}</button>
             </div>
@@ -1180,9 +1210,12 @@
         };
 
         document.getElementById('scp-filename-reset').onclick = () => {
+            const titleInput = document.getElementById('scp-article-title');
             const currentData = {
                 name: document.getElementById('scp-name').value,
-                handle: document.getElementById('scp-handle').value
+                handle: document.getElementById('scp-handle').value,
+                isArticle: !!(panel._data && panel._data.isArticle),
+                articleTitle: (titleInput && titleInput.value) || (panel._data && panel._data.articleTitle) || ''
             };
             document.getElementById('scp-filename').value = generateDefaultFilename(currentData);
             showToast('已重置导出文件名', 'info');
@@ -1288,7 +1321,8 @@
                     else if (b.type === 'text') body += `<div class="sc-art-p">${b.html}</div>`;
                     else if (b.type === 'list') body += `<${b.ordered ? 'ol' : 'ul'} class="sc-art-${b.ordered ? 'ol' : 'ul'}">${b.items.map(it => `<li class="sc-art-li">${it}</li>`).join('')}</${b.ordered ? 'ol' : 'ul'}>`;
                     else if (b.type === 'quote') body += `<blockquote class="sc-art-blockquote">${b.html}</blockquote>`;
-                    else if (b.type === 'code') body += `<pre class="sc-art-pre">${escapeHtml(b.text)}</pre>`;
+                    else if (b.type === 'code') body += `<div class="sc-art-prewrap"><div class="sc-art-prehead"><span class="sc-art-prelang">${escapeHtml(b.lang || 'text')}</span><span class="sc-art-precopy"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg></span></div><pre class="sc-art-pre">${escapeHtml(b.text || '')}</pre></div>`;
+                    else if (b.type === 'embed') body += `<div class="sc-art-embed">${b.html || (b.tweetId ? '内嵌帖 ' + escapeHtml(b.tweetId) : '内嵌帖')}</div>`;
                     else if (b.type === 'image') body += `<figure class="sc-art-figure"><img class="sc-art-img" src="${b.src}" crossorigin="anonymous" referrerpolicy="no-referrer">${b.caption ? `<figcaption class="sc-art-cap">${escapeHtml(b.caption)}</figcaption>` : ''}</figure>`;
                     else if (b.type === 'video') body += `<div class="sc-media video sc-art-video"><img src="${b.src}" crossorigin="anonymous" referrerpolicy="no-referrer">${showPlay ? `<div class="play-btn">${ICONS.play}</div>` : ''}</div>`;
                     else if (b.type === 'divider') body += `<hr class="sc-art-hr">`;
@@ -1576,11 +1610,11 @@
         .sc-link { color: #1d9bf0; text-decoration: none; cursor: default; }
         .sc-article { border: 1px solid #eff3f4; border-radius: 16px; background: #f7f9f9; margin-bottom: 12px; }
         .sc-art-cover { width: 100%; height: auto; display: block; }
-        .sc-art-body { padding: 14px 16px; font-size: 14px; line-height: 1.7; color: #0f1419; }
-        .sc-art-title { font-size: 19px; font-weight: 800; line-height: 1.3; color: #0f1419; margin: 0 0 12px; }
-        .sc-art-h { font-size: 16.5px; font-weight: 700; margin: 14px 0 6px; }
-        .sc-art-h2 { font-size: 15px; font-weight: 700; margin: 12px 0 5px; }
-        .sc-art-p { margin: 0 0 10px; white-space: pre-wrap; word-break: break-word; }
+        .sc-art-body { padding: 16px 18px 18px; font-size: 15px; line-height: 1.75; color: #0f1419; }
+        .sc-art-title { font-size: 18px; font-weight: 750; letter-spacing: -.02em; line-height: 1.35; color: #0f1419; margin: 0 0 14px; }
+        .sc-art-h { font-size: 16px; font-weight: 700; line-height: 1.4; margin: 18px 0 8px; }
+        .sc-art-h2 { font-size: 15px; font-weight: 700; line-height: 1.45; margin: 16px 0 7px; }
+        .sc-art-p { margin: 0 0 12px; white-space: pre-wrap; word-break: break-word; }
         .sc-art-p:last-child { margin-bottom: 0; }
         .sc-art-figure { margin: 4px 0 12px; }
         .sc-art-img { width: 100%; border-radius: 10px; display: block; margin: 0; }
@@ -1600,7 +1634,14 @@
         .sc-art-ul, .sc-art-ol { margin: 0 0 10px; padding-left: 22px; }
         .sc-art-li { margin-bottom: 4px; }
         .sc-art-blockquote { margin: 0 0 10px; padding: 2px 0 2px 12px; border-left: 3px solid #cfd9de; color: #3b4a54; }
-        .sc-art-pre { background: #0f1419; color: #f7f9f9; border-radius: 10px; padding: 10px 12px; font-size: 12.5px; overflow-x: auto; white-space: pre; margin: 0 0 10px; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+        .sc-art-prewrap { margin: 4px 0 14px; border: 1px solid #cfd6dd; border-radius: 10px; overflow: hidden; background: #f4f6f8; box-shadow: 0 1px 2px rgba(15,20,25,.04); }
+        .sc-art-prehead { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 7px 12px; background: #dce3e8; color: #536471; font-size: 12px; line-height: 1; border-bottom: 1px solid #cfd6dd; }
+        .sc-art-prelang { font-weight: 500; letter-spacing: .01em; }
+        .sc-art-precopy { width: 14px; height: 14px; color: #6b7c87; flex: 0 0 auto; opacity: .75; }
+        .sc-art-precopy svg { display: block; width: 14px; height: 14px; }
+        .sc-art-pre { margin: 0; padding: 11px 12px 12px; background: #f4f6f8; color: #0f1419; border: 0; font-size: 13px; line-height: 1.65; overflow-x: auto; white-space: pre-wrap; word-break: break-word; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+
+        .sc-art-embed { border: 1px solid #cfd9de; border-radius: 12px; padding: 10px 12px; margin: 0 0 10px; font-size: 13px; color: #536471; }
         .sc-art-spacer { height: 6px; }
         .sc-media { margin-bottom: 12px; border-radius: 14px; overflow: hidden; position: relative; background: transparent; }
         .sc-media.single img { max-width: 100%; height: auto; display: block; margin: 0 auto; }
