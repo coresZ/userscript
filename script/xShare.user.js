@@ -1,13 +1,15 @@
 // ==UserScript==
 // @name         X 推文一键生成分享卡片 & 视频深度解析助手 (多线程版)
 // @namespace    http://tampermonkey.net/
-// @version      6.8
+// @version      6.9
 // @description  自定义生成推文图片卡片，支持长文，新增视频极速无水印解析与直接强制下载本地（支持多线程并发，带真实进度）。
 // @author       Assistant
 // @match        https://x.com/*
 // @match        https://twitter.com/*
 // @grant        GM_addStyle
 // @grant        GM_xmlhttpRequest
+// @grant        GM_getValue
+// @grant        GM_setValue
 // @require      https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js
 // @connect      pbs.twimg.com
 // @connect      ton.twimg.com
@@ -44,6 +46,767 @@
     }
     function setStoredShowPlay(value) {
         localStorage.setItem(STORAGE_KEY_SHOW_PLAY, String(value));
+    }
+
+    const SB_KEYS = { url: 'sc_sb_url', key: 'sc_sb_key', bucket: 'sc_sb_bucket', on: 'sc_sb_on' };
+    function sbRead(k, fallback) {
+        try { if (typeof GM_getValue === 'function') return GM_getValue(k, fallback); } catch (_) {}
+        const v = localStorage.getItem(k);
+        return v == null ? fallback : v;
+    }
+    function sbWrite(k, v) {
+        try { if (typeof GM_setValue === 'function') GM_setValue(k, v); } catch (_) {}
+        localStorage.setItem(k, v);
+    }
+    function getSupabaseCfg() {
+        return {
+            url: String(sbRead(SB_KEYS.url, '') || '').replace(/\/+$/, ''),
+            key: String(sbRead(SB_KEYS.key, '') || '').trim(),
+            bucket: String(sbRead(SB_KEYS.bucket, 'xshare') || 'xshare').trim() || 'xshare',
+            on: sbRead(SB_KEYS.on, 'false') === 'true'
+        };
+    }
+    function isSupabaseReady() {
+        const c = getSupabaseCfg();
+        return !!(c.on && c.url && c.key);
+    }
+    function sbRequest(method, url, { headers, body, binary } = {}) {
+        return new Promise((resolve, reject) => {
+            const send = typeof GM_xmlhttpRequest === 'function' ? GM_xmlhttpRequest : null;
+            if (!send) { reject(new Error('no GM')); return; }
+            send({
+                method,
+                url,
+                headers: headers || {},
+                data: body,
+                binary: !!binary,
+                responseType: 'text',
+                onload: res => resolve(res),
+                onerror: err => reject(err || new Error('net'))
+            });
+        });
+    }
+    function htmlToPlain(html) {
+        const d = document.createElement('div');
+        d.innerHTML = html || '';
+        return (d.innerText || '').replace(/\u00a0/g, ' ').trim();
+    }
+    function buildCardMarkdown(data, filename) {
+        if (!data) return '';
+        const lines = [];
+        lines.push(data.isArticle ? '# ' + (data.articleTitle || filename || 'Article') : '# X 帖子');
+        lines.push('');
+        if (data.name || data.handle) lines.push([(data.name || ''), (data.handle || '')].filter(Boolean).join('  '));
+        if (data.time || data.views) lines.push([(data.time || ''), (data.views || '')].filter(Boolean).join(' · '));
+        if (data.link) lines.push(data.link);
+        lines.push('');
+        if (data.isArticle) {
+            (data.articleBlocks || []).forEach(b => {
+                if (b.type === 'heading') lines.push('## ' + htmlToPlain(b.html), '');
+                else if (b.type === 'subheading') lines.push('### ' + htmlToPlain(b.html), '');
+                else if (b.type === 'text') lines.push(htmlToPlain(b.html), '');
+                else if (b.type === 'quote') lines.push('> ' + htmlToPlain(b.html), '');
+                else if (b.type === 'code') lines.push('```' + (b.lang || ''), b.text || '', '```', '');
+                else if (b.type === 'list') (b.items || []).forEach((it, i) => lines.push((b.ordered ? (i + 1) + '. ' : '- ') + htmlToPlain(it)));
+                else if (b.type === 'divider') lines.push('---', '');
+                else if (b.type === 'image') lines.push(b.src ? '![](' + b.src + ')' : '', b.caption || '', '');
+            });
+        } else if (data.contentPlain) {
+            lines.push(data.contentPlain, '');
+        }
+        return lines.join('\n').trim() + '\n';
+    }
+    function sanitizeCloudPath(name) {
+        let s = String(name || 'card').replace(/\.png$/i, ''); s = s.replace(/[^A-Za-z0-9._-]+/g, '_').replace(/_+/g, '_').replace(/^[_\.-]+|[_\.-]+$/g, ''); return (s || 'card').slice(0, 80);
+    }
+    async function supabaseUpload(path, body, contentType) {
+        const cfg = getSupabaseCfg();
+        const url = cfg.url + '/storage/v1/object/' + encodeURIComponent(cfg.bucket) + '/' + path.split('/').map(encodeURIComponent).join('/');
+        const res = await sbRequest('POST', url, {
+            headers: {
+                Authorization: 'Bearer ' + cfg.key,
+                apikey: cfg.key,
+                'Content-Type': contentType || 'application/octet-stream',
+                'x-upsert': 'true'
+            },
+            body,
+            binary: contentType && contentType.indexOf('text/') !== 0
+        });
+        if (res.status >= 200 && res.status < 300) return { ok: true };
+        return { ok: false, error: (res.responseText || '').slice(0, 180) || ('HTTP ' + res.status) };
+    }
+    function cloudObjectBase(data) {
+        const now = new Date();
+        const pad = n => String(n).padStart(2, '0');
+        const stamp = now.getFullYear() + '-' + pad(now.getMonth() + 1) + '-' + pad(now.getDate());
+        const time = pad(now.getHours()) + pad(now.getMinutes());
+        const ref = data ? parseStatusRef(data) : null;
+        const idPart = (ref && ref.id) || String(now.getTime()).slice(-10);
+        return { stamp, base: 'x_' + idPart + '_' + time };
+    }
+    function refreshCloudButtons() {
+        const row = document.getElementById('scp-cloud-actions');
+        if (row) row.style.display = isSupabaseReady() ? 'contents' : 'none';
+    }
+    function currentCardTitle(data) {
+        const el = document.getElementById('scp-article-title');
+        const typed = el && el.value.trim();
+        if (typed) return typed.slice(0, 180);
+        if (data && data.articleTitle) return String(data.articleTitle).slice(0, 180);
+        if (data && data.contentPlain) return String(data.contentPlain).replace(/\s+/g, ' ').slice(0, 80);
+        return '';
+    }
+    function publicObjectUrl(path) {
+        const cfg = getSupabaseCfg();
+        return cfg.url + '/storage/v1/object/public/' + encodeURIComponent(cfg.bucket) + '/' + String(path || '').split('/').map(encodeURIComponent).join('/');
+    }
+    async function supabaseRest(method, pathAndQuery, jsonBody) {
+        const cfg = getSupabaseCfg();
+        const url = cfg.url + '/rest/v1/' + pathAndQuery.replace(/^\/+/, '');
+        const headers = {
+            Authorization: 'Bearer ' + cfg.key,
+            apikey: cfg.key,
+            'Content-Type': 'application/json',
+            Prefer: method === 'POST' ? 'return=minimal' : 'count=none'
+        };
+        const res = await sbRequest(method, url, {
+            headers,
+            body: jsonBody != null ? JSON.stringify(jsonBody) : undefined
+        });
+        const text = res.responseText || '';
+        let data = null;
+        try { data = text ? JSON.parse(text) : null; } catch (_) {}
+        if (res.status >= 200 && res.status < 300) return { ok: true, data };
+        const err = (data && (data.message || data.hint)) || text.slice(0, 180) || ('HTTP ' + res.status);
+        if (/paused|inactive project|not found/i.test(err) || res.status === 404 || res.status === 521) {
+            return { ok: false, error: '项目可能已暂停，请到 Supabase Dashboard 打开一次', status: res.status, paused: true };
+        }
+        return { ok: false, error: err, status: res.status };
+    }
+    function isMediaPostHref(href) {
+        return /\/(?:photo|video|analytics)(?:\/|$)/i.test(String(href || ''));
+    }
+    function canonicalPostUrl(raw) {
+        const s = String(raw || '').split('?')[0].split('#')[0];
+        if (!s || /twimg\.com|\/media\//i.test(s)) return '';
+        let m = s.match(/\/article\/(\d+)/);
+        if (m) return 'https://x.com/i/article/' + m[1];
+        m = s.match(/\/status(?:es)?\/(\d+)/);
+        if (m) return 'https://x.com/i/status/' + m[1];
+        return '';
+    }
+    function postSourceUrl(data) {
+        const cands = [data && data.link, typeof location !== 'undefined' ? location.href : ''];
+        for (const raw of cands) {
+            if (isMediaPostHref(raw)) continue;
+            const can = canonicalPostUrl(raw);
+            if (can) return can;
+        }
+        for (const raw of cands) {
+            const can = canonicalPostUrl(raw);
+            if (can) return can;
+        }
+        return '';
+    }
+    function normalizeImageUrl(url) {
+        const raw = String(url || '').trim();
+        if (!raw || raw.startsWith('data:')) return '';
+        try {
+            const u = new URL(raw);
+            if (/twimg\.com$/i.test(u.hostname) || /twimg\.com$/i.test(u.hostname.replace(/^[^.]+\./, ''))) {
+                if (u.searchParams.has('name')) u.searchParams.set('name', 'orig');
+            }
+            return u.toString();
+        } catch (_) {
+            return raw;
+        }
+    }
+    function shortHash(s) {
+        let h = 2166136261;
+        const str = String(s || '');
+        for (let i = 0; i < str.length; i++) {
+            h ^= str.charCodeAt(i);
+            h = Math.imul(h, 16777619);
+        }
+        return (h >>> 0).toString(16);
+    }
+    function formatSize(n) {
+        const v = Number(n) || 0;
+        if (v < 1024) return v + ' B';
+        if (v < 1024 * 1024) return (v / 1024).toFixed(1) + ' KB';
+        return (v / 1024 / 1024).toFixed(2) + ' MB';
+    }
+    async function recordCardRow({ data, kind, path, size, width, height }) {
+        const row = {
+            title: currentCardTitle(data) || path,
+            kind: kind,
+            path: path,
+            size: size || null,
+            width: width || null,
+            height: height || null,
+            source_url: postSourceUrl(data) || null
+        };
+        const res = await supabaseRest('POST', 'cards', row);
+        if (!res.ok && res.status === 404) {
+            showToast('云端库表不存在，请在 SQL Editor 执行建表语句', 'info');
+        }
+        return res;
+    }
+    async function queryCards(keyword) {
+        let q = 'cards?select=id,title,kind,path,size,width,height,source_url,created_at&order=created_at.desc&limit=80';
+        const kw = String(keyword || '').trim();
+        if (kw) {
+            const safe = kw.replace(/[,.()]/g, ' ').replace(/\*/g, '');
+            q += '&title=ilike.*' + encodeURIComponent(safe) + '*';
+        }
+        return supabaseRest('GET', q);
+    }
+    async function findExistingCards(data, kind) {
+        const src = postSourceUrl(data);
+        if (!src) return [];
+        const q = 'cards?select=id,title,kind,path,created_at,source_url,size,width,height&kind=eq.' + encodeURIComponent(kind)
+            + '&source_url=eq.' + encodeURIComponent(src) + '&limit=5';
+        const res = await supabaseRest('GET', q);
+        if (!res.ok || !Array.isArray(res.data)) return [];
+        return res.data;
+    }
+    function confirmOverwrite(row, label) {
+        return new Promise(resolve => {
+            const old = document.getElementById('scp-dup-mask');
+            if (old) old.remove();
+            const when = String((row && row.created_at) || '').replace('T', ' ').slice(0, 16);
+            const title = (row && row.title) || (row && row.path) || '';
+            const mask = document.createElement('div');
+            mask.id = 'scp-dup-mask';
+            mask.innerHTML = `
+                <div class="scp-dup-box">
+                    <h4>覆盖确认</h4>
+                    <div class="scp-dup-note">云端已有这份${escapeHtml(label)}，覆盖后旧文件会被替换。</div>
+                    <div class="scp-dup-meta">
+                        <div><span>类型</span>${escapeHtml(label)}</div>
+                        <div><span>标题</span>${escapeHtml(title)}</div>
+                        ${when ? '<div><span>上次</span>' + escapeHtml(when) + '</div>' : ''}
+                    </div>
+                    <div class="scp-dup-actions">
+                        <button type="button" id="scp-dup-over">覆盖</button>
+                        <button type="button" id="scp-dup-cancel">取消</button>
+                    </div>
+                </div>`;
+            document.body.appendChild(mask);
+            const onKey = e => { if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); done(false); } };
+            const done = v => {
+                document.removeEventListener('keydown', onKey, true);
+                mask.remove();
+                resolve(v);
+            };
+            document.addEventListener('keydown', onKey, true);
+            document.getElementById('scp-dup-cancel').onclick = () => done(false);
+            document.getElementById('scp-dup-over').onclick = () => done(true);
+            document.getElementById('scp-dup-cancel').focus();
+        });
+    }
+    async function updateCardRow(id, fields) {
+        if (!id) return { ok: false, error: 'no id' };
+        return supabaseRest('PATCH', 'cards?id=eq.' + encodeURIComponent(id), fields);
+    }
+    function isPausedError(res) {
+        const err = String((res && res.error) || '');
+        return /paused|inactive|not found|521|project/i.test(err);
+    }
+    async function findImageBySource(sourceUrl) {
+        const src = normalizeImageUrl(sourceUrl);
+        if (!src) return null;
+        const res = await supabaseRest('GET', 'images?select=id,source_url,path,url,size,width,height&source_url=eq.' + encodeURIComponent(src) + '&limit=1');
+        if (!res.ok || !Array.isArray(res.data) || !res.data[0]) return null;
+        return res.data[0];
+    }
+    function fetchRemoteBlob(url) {
+        return new Promise((resolve, reject) => {
+            if (typeof GM_xmlhttpRequest !== 'function') {
+                reject(new Error('no GM'));
+                return;
+            }
+            GM_xmlhttpRequest({
+                method: 'GET',
+                url,
+                responseType: 'blob',
+                onload: res => {
+                    if (res.status >= 200 && res.status < 300 && res.response) resolve(res.response);
+                    else reject(new Error('HTTP ' + res.status));
+                },
+                onerror: () => reject(new Error('net'))
+            });
+        });
+    }
+    function blobDimensions(blob) {
+        return new Promise(resolve => {
+            const src = URL.createObjectURL(blob);
+            const img = new Image();
+            img.onload = () => {
+                resolve({ width: img.naturalWidth || 0, height: img.naturalHeight || 0 });
+                URL.revokeObjectURL(src);
+            };
+            img.onerror = () => {
+                resolve({ width: 0, height: 0 });
+                URL.revokeObjectURL(src);
+            };
+            img.src = src;
+        });
+    }
+    function guessImageExt(url, blob) {
+        const type = (blob && blob.type) || '';
+        if (/jpe?g/i.test(type)) return 'jpg';
+        if (/png/i.test(type)) return 'png';
+        if (/webp/i.test(type)) return 'webp';
+        if (/gif/i.test(type)) return 'gif';
+        const m = String(url || '').match(/\.(jpe?g|png|webp|gif)(?:\?|$)/i);
+        return m ? m[1].toLowerCase().replace('jpeg', 'jpg') : 'jpg';
+    }
+    async function ensureHostedImage(sourceUrl) {
+        const src = normalizeImageUrl(sourceUrl);
+        if (!src) return { ok: false, error: 'empty' };
+        const existed = await findImageBySource(src);
+        if (existed && existed.url) return { ok: true, existed: true, url: existed.url, path: existed.path };
+        let blob;
+        try { blob = await fetchRemoteBlob(src); }
+        catch (err) { return { ok: false, error: (err && err.message) || 'fetch', source: src }; }
+        if (!blob || blob.size < 32) return { ok: false, error: 'empty blob', source: src };
+        const dim = await blobDimensions(blob);
+        const ext = guessImageExt(src, blob);
+        const path = 'img/' + shortHash(src) + '.' + ext;
+        const up = await supabaseUpload(path, blob, blob.type || 'image/jpeg');
+        if (!up.ok) return { ok: false, error: up.error || 'upload', source: src };
+        const publicUrl = publicObjectUrl(path);
+        const row = await supabaseRest('POST', 'images', {
+            source_url: src,
+            path,
+            url: publicUrl,
+            size: blob.size,
+            width: dim.width || null,
+            height: dim.height || null
+        });
+        if (!row.ok) return { ok: true, existed: false, url: publicUrl, path, registered: false, error: row.error };
+        return { ok: true, existed: false, url: publicUrl, path };
+    }
+    function collectSourceImages(data) {
+        const out = [];
+        const seen = new Set();
+        const add = u => {
+            const n = normalizeImageUrl(u);
+            if (!n || seen.has(n)) return;
+            seen.add(n);
+            out.push(n);
+        };
+        if (!data) return out;
+        add(data.articleCover);
+        (data.articleBlocks || []).forEach(b => { if (b && b.type === 'image') add(b.src); });
+        (data.images || []).forEach(add);
+        if (data.quoted && Array.isArray(data.quoted.images)) data.quoted.images.forEach(add);
+        return out;
+    }
+    async function resolveHostedMap(urls, onEach) {
+        const map = new Map();
+        let failed = 0, reused = 0, uploaded = 0;
+        for (let i = 0; i < urls.length; i++) {
+            if (onEach) onEach(i + 1, urls.length);
+            const res = await ensureHostedImage(urls[i]);
+            if (res.ok && res.url) {
+                map.set(urls[i], res.url);
+                if (res.existed) reused += 1;
+                else uploaded += 1;
+            } else {
+                failed += 1;
+            }
+        }
+        return { map, failed, reused, uploaded };
+    }
+    function rewriteMarkdownImages(md, map) {
+        let out = String(md || '');
+        map.forEach((hosted, source) => {
+            if (!source || !hosted) return;
+            out = out.split(source).join(hosted);
+        });
+        collectSourceImages({}).forEach(() => {});
+        return out;
+    }
+    function buildHostedMarkdown(data, map) {
+        const raw = buildCardMarkdown(data, currentCardTitle(data));
+        let md = raw;
+        map.forEach((hosted, source) => { md = md.split(source).join(hosted); });
+        // leftover pbs/twimg in markdown image syntax
+        md = md.replace(/!\[([^\]]*)\]\((https?:\/\/[^)]+)\)/g, (all, alt, url) => {
+            const n = normalizeImageUrl(url);
+            if (map.has(n)) return '![' + alt + '](' + map.get(n) + ')';
+            if (/twimg\.com|twimg\.com|pbs\.twimg/i.test(url)) return '![未备份](' + url + ')';
+            return all;
+        });
+        return md;
+    }
+
+    function openCloudLibrary() {
+        if (!isSupabaseReady()) { showToast('未启用远程备份', 'info'); return; }
+        const old = document.getElementById('scp-lib-mask');
+        if (old) old.remove();
+        const mask = document.createElement('div');
+        mask.id = 'scp-lib-mask';
+        mask.innerHTML = `
+            <div class="scp-sb-box scp-lib-box">
+                <div class="scp-lib-head">
+                    <h4>云端库</h4>
+                    <button type="button" id="scp-lib-close" class="scp-lib-x">关闭</button>
+                </div>
+                <div class="scp-lib-search">
+                    <input id="scp-lib-q" type="text" placeholder="搜索标题或帖子 ID">
+                    <button type="button" id="scp-lib-go">搜索</button>
+                </div>
+                <div class="scp-lib-filters">
+                    <button type="button" class="scp-lib-chip on" data-kind="">全部</button>
+                    <button type="button" class="scp-lib-chip" data-kind="png">卡片</button>
+                    <button type="button" class="scp-lib-chip" data-kind="md">Markdown</button>
+                    <span class="scp-lib-gap"></span>
+                    <button type="button" class="scp-lib-chip on" data-range="all">不限时间</button>
+                    <button type="button" class="scp-lib-chip" data-range="7">7 天</button>
+                    <button type="button" class="scp-lib-chip" data-range="1">今天</button>
+                </div>
+                <div class="scp-lib-listwrap">
+                    <div id="scp-lib-spin" class="scp-lib-spin" hidden><span></span></div>
+                    <div id="scp-lib-list" class="scp-lib-list"></div>
+                </div>
+                <div class="scp-lib-pager">
+                    <button type="button" id="scp-lib-prev">上一页</button>
+                    <span id="scp-lib-page">1</span>
+                    <button type="button" id="scp-lib-next">下一页</button>
+                </div>
+            </div>`;
+        document.body.appendChild(mask);
+        mask._lib = { kind: '', range: 'all', page: 0 };
+        const closeLib = () => {
+            document.removeEventListener('keydown', onLibKey, true);
+            mask.remove();
+        };
+        const onLibKey = e => { if (e.key === 'Escape') closeLib(); };
+        document.addEventListener('keydown', onLibKey, true);
+        mask.addEventListener('wheel', e => {
+            const list = document.getElementById('scp-lib-list');
+            if (!list) { e.preventDefault(); return; }
+            if (!list.contains(e.target) && e.target !== list) {
+                e.preventDefault();
+                return;
+            }
+            const top = list.scrollTop <= 0 && e.deltaY < 0;
+            const bot = list.scrollTop + list.clientHeight >= list.scrollHeight - 1 && e.deltaY > 0;
+            if (top || bot || true) e.preventDefault();
+            list.scrollTop += e.deltaY;
+        }, { passive: false });
+        document.getElementById('scp-lib-close').onclick = closeLib;
+        const input = document.getElementById('scp-lib-q');
+        const run = () => { mask._lib.page = 0; renderCloudLibrary(); };
+        document.getElementById('scp-lib-go').onclick = run;
+        input.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); run(); } });
+        input.addEventListener('input', () => {
+            clearTimeout(mask._lib.timer);
+            mask._lib.timer = setTimeout(run, 300);
+        });
+        mask.querySelectorAll('.scp-lib-chip[data-kind]').forEach(btn => {
+            btn.onclick = () => {
+                mask._lib.kind = btn.getAttribute('data-kind') || '';
+                mask.querySelectorAll('.scp-lib-chip[data-kind]').forEach(b => b.classList.toggle('on', b === btn));
+                run();
+            };
+        });
+        mask.querySelectorAll('.scp-lib-chip[data-range]').forEach(btn => {
+            btn.onclick = () => {
+                mask._lib.range = btn.getAttribute('data-range') || 'all';
+                mask.querySelectorAll('.scp-lib-chip[data-range]').forEach(b => b.classList.toggle('on', b === btn));
+                run();
+            };
+        });
+        document.getElementById('scp-lib-prev').onclick = () => { if (mask._lib.page > 0) { mask._lib.page -= 1; renderCloudLibrary(); } };
+        document.getElementById('scp-lib-next').onclick = () => { mask._lib.page += 1; renderCloudLibrary(); };
+        renderCloudLibrary();
+    }
+    async function renderCloudLibrary() {
+        const box = document.getElementById('scp-lib-list');
+        const mask = document.getElementById('scp-lib-mask');
+        if (!box || !mask) return;
+        const st = mask._lib || { kind: '', range: 'all', page: 0 };
+        const input = document.getElementById('scp-lib-q');
+        const keyword = input ? input.value.trim() : '';
+        const spin = document.getElementById('scp-lib-spin');
+        if (spin) spin.hidden = false;
+        if (!box.innerHTML) box.innerHTML = '<div class="scp-lib-empty">加载中...</div>';
+        let q = 'cards?select=id,title,kind,path,size,width,height,source_url,created_at&order=created_at.desc&limit=120';
+        if (st.kind) q += '&kind=eq.' + encodeURIComponent(st.kind);
+        if (st.range === '1' || st.range === '7') {
+            const d = new Date();
+            if (st.range === '1') d.setHours(0, 0, 0, 0);
+            else d.setDate(d.getDate() - 7);
+            q += '&created_at=gte.' + encodeURIComponent(d.toISOString());
+        }
+        if (keyword) {
+            const safe = keyword.replace(/[*(),]/g, ' ').trim();
+            const enc = encodeURIComponent(safe);
+            q += '&or=(title.ilike.*' + enc + '*,source_url.ilike.*' + enc + '*)';
+        }
+        const res = await supabaseRest('GET', q);
+        if (spin) spin.hidden = true;
+        if (!res.ok) {
+            box.innerHTML = '<div class="scp-lib-empty">' + escapeHtml(res.error || '查询失败') + '</div>';
+            return;
+        }
+        const rows = Array.isArray(res.data) ? res.data : [];
+        const groups = [];
+        const index = new Map();
+        rows.forEach(r => {
+            const key = canonicalPostUrl(r.source_url) || r.source_url || ('id:' + r.id);
+            if (!index.has(key)) {
+                const g = { key, title: r.title || r.path || '', source: canonicalPostUrl(r.source_url) || '', items: [], at: r.created_at || '' };
+                index.set(key, g);
+                groups.push(g);
+            }
+            const g = index.get(key);
+            g.items.push(r);
+            if ((r.created_at || '') > g.at) g.at = r.created_at || '';
+            if (r.title && r.title.length > (g.title || '').length) g.title = r.title;
+            if (!g.source) g.source = canonicalPostUrl(r.source_url) || '';
+        });
+        const pageSize = 6;
+        const maxPage = Math.max(0, Math.ceil(groups.length / pageSize) - 1);
+        if (st.page > maxPage) st.page = maxPage;
+        const slice = groups.slice(st.page * pageSize, st.page * pageSize + pageSize);
+        const pageEl = document.getElementById('scp-lib-page');
+        if (pageEl) pageEl.textContent = (st.page + 1) + ' / ' + (maxPage + 1);
+        const prev = document.getElementById('scp-lib-prev');
+        const next = document.getElementById('scp-lib-next');
+        if (prev) prev.disabled = st.page <= 0;
+        if (next) next.disabled = st.page >= maxPage;
+        if (!slice.length) {
+            box.innerHTML = '<div class="scp-lib-empty">' + (keyword ? '没有符合“' + escapeHtml(keyword) + '”的记录' : '没有记录') + '</div>';
+            return;
+        }
+        box.innerHTML = slice.map(g => {
+            const raw = String(g.at || '').replace('T', ' ');
+            const whenFull = raw.slice(0, 16);
+            const whenShort = whenFull.length >= 16 ? whenFull.slice(5) : whenFull;
+            const src = g.source
+                ? '<a class="scp-lib-src" href="' + escapeHtml(g.source) + '" target="_blank" rel="noreferrer">原帖</a>'
+                : '';
+            const ordered = g.items.slice().sort((a, b) => {
+                const ra = a.kind === 'md' ? 0 : 1;
+                const rb = b.kind === 'md' ? 0 : 1;
+                return ra - rb;
+            });
+            const files = ordered.map(r => {
+                const url = publicObjectUrl(r.path);
+                const label = (r.kind === 'md' ? 'MD' : '卡片') + (r.size ? ' · ' + formatSize(r.size) : '');
+                const tip = [
+                    r.kind === 'md' ? 'Markdown' : '卡片图片',
+                    r.size ? formatSize(r.size) : '',
+                    (r.width && r.height) ? (r.width + ' × ' + r.height) : '',
+                    r.path || ''
+                ].filter(Boolean).join('\n');
+                return '<button type="button" class="scp-lib-file" data-url="' + escapeHtml(url) + '" title="' + escapeHtml(tip) + '">'
+                    + escapeHtml(label)
+                    + '</button>';
+            }).join('');
+            return '<div class="scp-lib-group">'
+                + '<div class="scp-lib-group-top">'
+                + '<div class="scp-lib-title" title="' + escapeHtml(g.title) + '">' + escapeHtml(g.title) + '</div>'
+                + '<div class="scp-lib-aside">' + src
+                + (whenShort ? '<span class="scp-lib-when" title="' + escapeHtml(whenFull) + '">' + escapeHtml(whenShort) + '</span>' : '')
+                + '</div>'
+                + '</div>'
+                + '<div class="scp-lib-files">' + files + '</div>'
+                + '</div>';
+        }).join('');
+        box.querySelectorAll('.scp-lib-file').forEach(el => {
+            el.onclick = async () => {
+                const url = el.getAttribute('data-url');
+                try { await navigator.clipboard.writeText(url); showToast('已复制链接', 'success'); }
+                catch (_) { showToast(url, 'info'); }
+            };
+        });
+    }
+    async function captureCardPngBlob() {
+        const wrapper = document.getElementById('scp-card-wrapper');
+        if (!wrapper) throw new Error('no card');
+        const imgs = wrapper.querySelectorAll('img');
+        await Promise.all([...imgs].map(img => {
+            if (img.complete && img.naturalWidth) return Promise.resolve();
+            return new Promise(resolve => {
+                img.onload = img.onerror = resolve;
+                setTimeout(resolve, 5000);
+            });
+        }));
+        const canvas = await html2canvas(wrapper, {
+            backgroundColor: null,
+            scale: window.devicePixelRatio && window.devicePixelRatio > 1 ? window.devicePixelRatio : 2,
+            useCORS: true,
+            allowTaint: false,
+            logging: false,
+            imageTimeout: 12000,
+            onclone: doc => {
+                const w = doc.getElementById('scp-card-wrapper');
+                if (w) {
+                    w.style.borderRadius = '16px';
+                    w.style.overflow = 'hidden';
+                    w.style.background = '#ffffff';
+                }
+            }
+        });
+        if (!canvas.width || !canvas.height) throw new Error('blank');
+        const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
+        if (!blob || blob.size < 1024) throw new Error('blank');
+        blob._w = canvas.width;
+        blob._h = canvas.height;
+        return blob;
+    }
+    async function syncCloudImage() {
+        if (!isSupabaseReady()) { showToast('未启用远程备份', 'info'); return; }
+        const btn = document.getElementById('scp-cloud-img');
+        const html = btn && btn.innerHTML;
+        try {
+            if (btn) { btn.disabled = true; btn.textContent = '同步中...'; }
+            const panel = document.getElementById('share-card-panel');
+            const data = panel && panel._data;
+            const existing = await findExistingCards(data, 'png');
+            let reuse = null;
+            if (existing.length) {
+                const ok = await confirmOverwrite(existing[0], '卡片');
+                if (!ok) return;
+                reuse = existing[0];
+            }
+            const blob = await captureCardPngBlob();
+            const { stamp, base } = cloudObjectBase(data);
+            const path = (reuse && reuse.path) || ('cards/' + stamp + '/' + base + '.png');
+            const res = await supabaseUpload(path, blob, 'image/png');
+            if (!res.ok) { showToast('云端未写入 ' + (res.error || ''), 'info'); return; }
+            const fields = { title: currentCardTitle(data) || path, kind: 'png', path, size: blob.size, width: blob._w, height: blob._h, source_url: postSourceUrl(data) || null };
+            const row = reuse ? await updateCardRow(reuse.id, fields) : await recordCardRow({ data, kind: 'png', path, size: blob.size, width: blob._w, height: blob._h });
+            showToast(row.ok ? (reuse ? '卡片已覆盖 ' : '卡片已同步 ') + path : '文件已上传，目录登记失败', row.ok ? 'success' : 'info');
+        } catch (err) {
+            console.error(err);
+            showToast(err && err.message === 'blank' ? '卡片图无效，未上传' : '同步图片失败', 'error');
+        } finally {
+            if (btn) { btn.disabled = false; btn.innerHTML = html || '同步卡片图片'; }
+        }
+    }
+    async function syncCloudMedia() {
+        if (!isSupabaseReady()) { showToast('未启用远程备份', 'info'); return; }
+        const btn = document.getElementById('scp-cloud-media');
+        const html = btn && btn.innerHTML;
+        try {
+            if (btn) { btn.disabled = true; btn.textContent = '同步中...'; }
+            const panel = document.getElementById('share-card-panel');
+            const urls = collectSourceImages(panel && panel._data);
+            if (!urls.length) { showToast('没有可上传的配图', 'info'); return; }
+            const result = await resolveHostedMap(urls, (i, n) => {
+                if (btn) btn.textContent = '配图 ' + i + '/' + n;
+            });
+            showToast('配图 新传' + result.uploaded + ' / 已有' + result.reused + ' / 失败' + result.failed, result.failed ? 'info' : 'success');
+        } catch (err) {
+            console.error(err);
+            showToast('同步配图失败', 'error');
+        } finally {
+            if (btn) { btn.disabled = false; btn.innerHTML = html || '同步配图'; }
+        }
+    }
+    async function syncCloudMarkdown() {
+        if (!isSupabaseReady()) { showToast('未启用远程备份', 'info'); return; }
+        const btn = document.getElementById('scp-cloud-md');
+        const html = btn && btn.innerHTML;
+        try {
+            if (btn) { btn.disabled = true; btn.textContent = '同步中...'; }
+            const panel = document.getElementById('share-card-panel');
+            const data = panel && panel._data;
+            const existing = await findExistingCards(data, 'md');
+            let reuse = null;
+            if (existing.length) {
+                const ok = await confirmOverwrite(existing[0], 'Markdown');
+                if (!ok) return;
+                reuse = existing[0];
+            }
+            const urls = collectSourceImages(data);
+            const hosted = await resolveHostedMap(urls, (i, n) => {
+                if (btn) btn.textContent = '配图 ' + i + '/' + n;
+            });
+            if (btn) btn.textContent = '同步中...';
+            const md = buildHostedMarkdown(data, hosted.map);
+            if (!md.trim()) { showToast('没有可同步的 Markdown', 'info'); return; }
+            const { stamp, base } = cloudObjectBase(data);
+            const path = (reuse && reuse.path) || ('cards/' + stamp + '/' + base + '.md');
+            const res = await supabaseUpload(path, md, 'text/markdown; charset=utf-8');
+            if (!res.ok) { showToast('云端未写入 ' + (res.error || ''), 'info'); return; }
+            const bytes = new Blob([md]).size;
+            const fields = { title: currentCardTitle(data) || path, kind: 'md', path, size: bytes, source_url: postSourceUrl(data) || null };
+            const row = reuse ? await updateCardRow(reuse.id, fields) : await recordCardRow({ data, kind: 'md', path, size: bytes });
+            const extra = hosted.failed ? '，' + hosted.failed + ' 张未备份' : '';
+            showToast((row.ok ? (reuse ? 'Markdown 已覆盖' : 'Markdown 已同步') : '文件已上传，目录登记失败') + extra, row.ok && !hosted.failed ? 'success' : 'info');
+        } catch (err) {
+            console.error(err);
+            showToast('同步 Markdown 失败', 'error');
+        } finally {
+            if (btn) { btn.disabled = false; btn.innerHTML = html || '同步 Markdown'; }
+        }
+    }
+    function openSupabaseSettings() {
+        const old = document.getElementById('scp-sb-mask');
+        if (old) old.remove();
+        const cfg = getSupabaseCfg();
+        const mask = document.createElement('div');
+        mask.id = 'scp-sb-mask';
+        mask.innerHTML = `
+            <div class="scp-sb-box">
+                <h4>云端备份（自用）</h4>
+                <p>凭证只存在本机。桶需允许 anon 上传，例如 bucket <code>xshare</code>。</p>
+                <label>Project URL</label>
+                <input id="scp-sb-url" type="text" placeholder="https://xxxx.supabase.co" value="${cfg.url.replace(/"/g, '&quot;')}">
+                <label>anon public key</label>
+                <input id="scp-sb-key" type="password" placeholder="eyJ..." value="${cfg.key.replace(/"/g, '&quot;')}">
+                <label>Bucket</label>
+                <input id="scp-sb-bucket" type="text" value="${cfg.bucket.replace(/"/g, '&quot;')}">
+                <label class="scp-sb-check"><input id="scp-sb-on" type="checkbox" ${cfg.on ? 'checked' : ''}> 启用远程备份</label>
+                <div class="scp-sb-actions">
+                    <button type="button" id="scp-sb-cancel">关闭</button>
+                    <button type="button" id="scp-sb-save">保存</button>
+                </div>
+            </div>`;
+        document.body.appendChild(mask);
+        mask.addEventListener('click', e => { if (e.target === mask) mask.remove(); });
+        mask.addEventListener('wheel', e => {
+            e.preventDefault();
+            const list = document.getElementById('scp-lib-list');
+            if (list) list.scrollTop += e.deltaY;
+        }, { passive: false });
+        mask.addEventListener('touchmove', e => e.preventDefault(), { passive: false });
+        document.getElementById('scp-sb-cancel').onclick = () => mask.remove();
+        document.getElementById('scp-sb-save').onclick = () => {
+            sbWrite(SB_KEYS.url, document.getElementById('scp-sb-url').value.trim());
+            sbWrite(SB_KEYS.key, document.getElementById('scp-sb-key').value.trim());
+            sbWrite(SB_KEYS.bucket, document.getElementById('scp-sb-bucket').value.trim() || 'xshare');
+            sbWrite(SB_KEYS.on, document.getElementById('scp-sb-on').checked ? 'true' : 'false');
+            mask.remove();
+            refreshCloudButtons();
+            showToast(isSupabaseReady() ? '云端备份已开启' : '已保存（未开启或凭证不完整）', 'info');
+        };
+    }
+    function bindHiddenSupabaseEntry(panel) {
+        const badge = panel.querySelector('.scp-version-badge');
+        if (!badge) return;
+        let taps = 0;
+        let timer = 0;
+        badge.style.cursor = 'default';
+        badge.addEventListener('click', e => {
+            e.preventDefault();
+            taps += 1;
+            clearTimeout(timer);
+            if (taps >= 3) {
+                taps = 0;
+                openSupabaseSettings();
+                return;
+            }
+            timer = setTimeout(() => { taps = 0; }, 900);
+        });
     }
 
     const ICONS = {
@@ -554,11 +1317,20 @@
             }
         }
 
-        const linkEl = article.querySelector('a[href*="/status/"], a[href*="/article/"]');
-        const href = linkEl ? linkEl.getAttribute('href') : '';
-        const link = href
-            ? (href.startsWith('http') ? href.split('?')[0] : 'https://x.com' + href.split('?')[0])
-            : location.href;
+        let href = '';
+        const timeLink = article.querySelector('time') && article.querySelector('time').closest('a[href]');
+        const hrefs = [];
+        if (timeLink) hrefs.push(timeLink.getAttribute('href') || '');
+        article.querySelectorAll('a[href*="/status/"], a[href*="/article/"]').forEach(a => hrefs.push(a.getAttribute('href') || ''));
+        for (const h of hrefs) {
+            if (!h || isMediaPostHref(h)) continue;
+            if (!/\/(?:status(?:es)?|article)\/\d+/.test(h)) continue;
+            href = h;
+            break;
+        }
+        if (!href) href = location.pathname || '';
+        const link = canonicalPostUrl(href.startsWith('http') ? href : ('https://x.com' + href))
+            || (href.startsWith('http') ? href.split('?')[0] : (href ? 'https://x.com' + href.split('?')[0] : location.href.split('?')[0]));
 
         return { name, handle, contentHtml, contentPlain, avatar, time, views, images, videos, quoted, link };
     }
@@ -1082,7 +1854,7 @@
                 <div class="scp-title">
                     <span class="scp-title-icon">${ICONS.cardSparkle}</span>
                     <span>推文分享卡片生成器</span>
-                    <span class="scp-version-badge">v6.8</span>
+                    <span class="scp-version-badge">v6.9</span>
                 </div>
                 <button id="scp-close" title="关闭窗口">${ICONS.close}</button>
             </div>
@@ -1170,6 +1942,24 @@
                             ${ICONS.refresh}
                             <span>刷新预览</span>
                         </button>
+                        <div id="scp-cloud-actions" class="scp-cloud-actions">
+                            <button id="scp-cloud-img" type="button" class="secondary">
+                                ${ICONS.image}
+                                <span>同步卡片图片</span>
+                            </button>
+                            <button id="scp-cloud-media" type="button" class="secondary">
+                                ${ICONS.image}
+                                <span>同步配图</span>
+                            </button>
+                            <button id="scp-cloud-md" type="button" class="secondary">
+                                ${ICONS.copy}
+                                <span>同步 Markdown</span>
+                            </button>
+                            <button id="scp-cloud-lib" type="button" class="secondary">
+                                ${ICONS.cardSparkle}
+                                <span>打开云端库</span>
+                            </button>
+                        </div>
                     </div>
                 </div>
                 <div class="scp-preview-wrap">
@@ -1239,6 +2029,7 @@
             btn.addEventListener('click', () => applyWidth(btn.dataset.w));
         });
         applyWidth(defaultWidth);
+        bindHiddenSupabaseEntry(panel);
 
         const playCheckbox = document.getElementById('scp-show-playbtn');
         playCheckbox.addEventListener('change', () => {
@@ -1250,6 +2041,15 @@
         document.getElementById('scp-preview').onclick = () => renderCard(panel._data);
         document.getElementById('scp-download').onclick = () => exportCard(false);
         document.getElementById('scp-copy').onclick = () => exportCard(true);
+        const cloudImgBtn = document.getElementById('scp-cloud-img');
+        const cloudMdBtn = document.getElementById('scp-cloud-md');
+        if (cloudImgBtn) cloudImgBtn.onclick = () => syncCloudImage();
+        const cloudMediaBtn = document.getElementById('scp-cloud-media');
+        if (cloudMediaBtn) cloudMediaBtn.onclick = () => syncCloudMedia();
+        if (cloudMdBtn) cloudMdBtn.onclick = () => syncCloudMarkdown();
+        const cloudLibBtn = document.getElementById('scp-cloud-lib');
+        if (cloudLibBtn) cloudLibBtn.onclick = () => openCloudLibrary();
+        refreshCloudButtons();
 
         renderCard(panel._data);
 
@@ -1421,18 +2221,18 @@
                     }
                 }
             });
+            const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
+            if (!blob) throw new Error('blob');
             if (copy) {
-                canvas.toBlob(async blob => {
-                    try {
-                        await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]);
-                        showToast('已成功复制卡片至剪贴板！', 'success');
-                    } catch {
-                        download(canvas, customName);
-                        showToast('复制失败，已自动转为下载图片', 'info');
-                    }
-                });
+                try {
+                    await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]);
+                    showToast('已成功复制卡片至剪贴板！', 'success');
+                } catch {
+                    downloadBlob(blob, customName);
+                    showToast('复制失败，已自动转为下载图片', 'info');
+                }
             } else {
-                download(canvas, customName);
+                downloadBlob(blob, customName);
                 showToast('已开始下载推文分享卡片！', 'success');
             }
         } catch (e) {
@@ -1444,19 +2244,19 @@
         }
     }
 
-    function download(canvas, customName) {
+    function downloadBlob(blob, customName) {
         let filename = (customName || '').trim();
-        if (!filename) {
-            filename = `x-card-${Date.now()}`;
-        }
+        if (!filename) filename = `x-card-${Date.now()}`;
         filename = filename.replace(/[\\/:*?"<>|]/g, '_');
-        if (!filename.toLowerCase().endsWith('.png')) {
-            filename += '.png';
-        }
+        if (!filename.toLowerCase().endsWith('.png')) filename += '.png';
         const a = document.createElement('a');
         a.download = filename;
-        a.href = canvas.toDataURL('image/png');
+        a.href = URL.createObjectURL(blob);
         a.click();
+        setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+    }
+    function download(canvas, customName) {
+        canvas.toBlob(blob => { if (blob) downloadBlob(blob, customName); }, 'image/png');
     }
 
     function resolveTcoLink(url) {
@@ -1556,6 +2356,78 @@
         .scp-title-icon { display: inline-flex; align-items: center; color: #1d9bf0; }
         .scp-title-icon .sc-icon { width: 18px; height: 18px; }
         .scp-version-badge { font-size: 11px; font-weight: 600; color: #8b98a5; background: rgba(255, 255, 255, 0.1); padding: 1px 6px; border-radius: 999px; }
+        #scp-sb-mask { position: fixed; inset: 0; z-index: 1000002; background: rgba(15,20,25,.45); display: flex; align-items: center; justify-content: center; }
+        .scp-sb-box { width: min(420px, calc(100vw - 32px)); background: #fff; color: #0f1419; border-radius: 16px; padding: 18px 18px 16px; box-shadow: 0 16px 40px rgba(15,20,25,.24); }
+        .scp-sb-box h4 { margin: 0 0 6px; font-size: 15px; }
+        .scp-sb-box p { margin: 0 0 12px; font-size: 12px; color: #536471; line-height: 1.5; }
+        .scp-sb-box label { display: block; font-size: 12px; font-weight: 600; color: #536471; margin: 8px 0 4px; }
+        .scp-sb-box input[type="text"], .scp-sb-box input[type="password"] { width: 100%; box-sizing: border-box; padding: 8px 10px; border: 1px solid #cfd9de; border-radius: 8px; font-size: 13px; }
+        .scp-sb-box .scp-sb-check { display: flex; align-items: center; gap: 8px; font-weight: 600; color: #0f1419; margin-top: 12px; }
+        .scp-sb-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 14px; }
+        .scp-sb-actions button { border: 1px solid #cfd9de; background: #fff; border-radius: 999px; padding: 7px 14px; font-size: 13px; font-weight: 700; cursor: pointer; }
+        .scp-sb-actions #scp-sb-save { background: #0f1419; color: #fff; border-color: #0f1419; }
+        .scp-cloud-actions { display: none; }
+        #scp-cloud-md, #scp-cloud-lib { grid-column: 1 / -1; }
+        #scp-lib-mask { position: fixed; inset: 0; z-index: 1000003; background: rgba(15,20,25,.45); display: flex; align-items: center; justify-content: center; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
+        #scp-lib-mask .scp-lib-box {
+            width: min(520px, calc(100vw - 28px));
+            height: min(680px, calc(100vh - 36px));
+            max-height: calc(100vh - 36px);
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            background: #fff;
+            color: #0f1419;
+            border-radius: 18px;
+            padding: 16px 16px 14px;
+            box-shadow: 0 16px 40px rgba(15,20,25,.24);
+        }
+        #scp-lib-mask .scp-lib-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 12px; flex-shrink: 0; }
+        #scp-lib-mask .scp-lib-head h4 { margin: 0; font-size: 16px; font-weight: 760; color: #0f1419; }
+        #scp-lib-mask .scp-lib-x { appearance: none; border: 0; background: transparent; color: #536471; font-size: 13px; font-weight: 650; cursor: pointer; padding: 4px 2px; }
+        #scp-lib-mask .scp-lib-search { display: flex; gap: 8px; margin-bottom: 8px; flex-shrink: 0; }
+        #scp-lib-mask .scp-lib-search input { flex: 1; width: auto; box-sizing: border-box; padding: 8px 10px; border: 1px solid #cfd9de; border-radius: 10px; font-size: 13px; background: #fff; color: #0f1419; }
+        #scp-lib-mask .scp-lib-search button { appearance: none; border: 1px solid #0f1419; background: #0f1419; color: #fff; border-radius: 10px; padding: 8px 12px; font-size: 13px; font-weight: 700; cursor: pointer; }
+        #scp-lib-mask .scp-lib-filters { display: flex; flex-wrap: nowrap; gap: 6px; align-items: center; margin-bottom: 12px; flex-shrink: 0; overflow-x: auto; }
+        #scp-lib-mask .scp-lib-gap { flex: 1; min-width: 8px; }
+        #scp-lib-mask .scp-lib-chip { appearance: none; border: 1px solid #e1e8ed; background: #fff; color: #536471; border-radius: 999px; padding: 5px 10px; font-size: 12px; font-weight: 650; cursor: pointer; line-height: 1; }
+        #scp-lib-mask .scp-lib-chip.on { background: #0f1419; color: #fff; border-color: #0f1419; }
+        #scp-lib-mask .scp-lib-list { flex: 1 1 auto; min-height: 0; max-height: none; overflow: auto; display: flex; flex-direction: column; gap: 6px; border: 0; background: transparent; }
+        #scp-lib-mask .scp-lib-list::-webkit-scrollbar { width: 8px; height: 8px; }
+        #scp-lib-mask .scp-lib-list::-webkit-scrollbar-track { background: transparent; }
+        #scp-lib-mask .scp-lib-list::-webkit-scrollbar-thumb { background: rgba(15,20,25,.28); border-radius: 8px; border: 2px solid transparent; background-clip: padding-box; }
+        #scp-lib-mask .scp-lib-list { scrollbar-width: thin; scrollbar-color: rgba(15,20,25,.28) transparent; }
+        #scp-lib-mask .scp-lib-group { border: 1px solid #e6ebef; border-radius: 12px; padding: 8px 10px; background: #fafbfc; }
+        #scp-lib-mask .scp-lib-group-top { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+        #scp-lib-mask .scp-lib-title { font-size: 13px; font-weight: 700; line-height: 1.35; color: #0f1419; min-width: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        #scp-lib-mask .scp-lib-aside { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+        #scp-lib-mask .scp-lib-when { font-size: 11px; color: #8b98a5; white-space: nowrap; cursor: default; }
+        #scp-lib-mask .scp-lib-src { font-size: 12px; color: #1d9bf0; text-decoration: none; font-weight: 650; white-space: nowrap; }
+        #scp-lib-mask .scp-lib-files { display: flex; flex-direction: row; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+        #scp-lib-mask .scp-lib-file { appearance: none; display: inline-flex; align-items: center; width: auto; box-sizing: border-box; border: 1px solid #e1e8ed; background: #fff; border-radius: 999px; padding: 4px 9px; font-size: 11.5px; color: #0f1419; cursor: pointer; line-height: 1.2; }
+        #scp-lib-mask .scp-lib-file:hover { background: #f7f9f9; }
+        #scp-lib-mask .scp-lib-pager { display: flex; align-items: center; justify-content: flex-end; gap: 8px; margin-top: 12px; flex-shrink: 0; }
+        #scp-lib-mask .scp-lib-pager button { appearance: none; border: 1px solid #cfd9de; background: #fff; color: #0f1419; border-radius: 999px; padding: 6px 12px; font-size: 12px; font-weight: 700; cursor: pointer; }
+        #scp-lib-mask .scp-lib-pager button:disabled { opacity: .4; cursor: default; }
+        #scp-lib-mask .scp-lib-empty { padding: 28px 12px; text-align: center; font-size: 13px; color: #536471; }
+        #scp-dup-mask { position: fixed; inset: 0; z-index: 1000004; background: rgba(15,20,25,.45); display: flex; align-items: center; justify-content: center; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
+        #scp-dup-mask .scp-dup-box { width: min(400px, calc(100vw - 32px)); background: #fff; color: #0f1419; border-radius: 16px; padding: 18px 18px 16px; box-shadow: 0 16px 40px rgba(15,20,25,.24); }
+        #scp-dup-mask h4 { margin: 0 0 10px; font-size: 16px; }
+        #scp-dup-mask .scp-dup-note { font-size: 13px; color: #536471; line-height: 1.5; margin-bottom: 12px; }
+        #scp-dup-mask .scp-dup-meta { background: #f7f9f9; border-radius: 10px; padding: 10px 12px; display: flex; flex-direction: column; gap: 6px; font-size: 13px; }
+        #scp-dup-mask .scp-dup-meta span { display: inline-block; width: 36px; color: #8b98a5; font-size: 12px; }
+        #scp-dup-mask .scp-dup-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 14px; }
+        #scp-dup-mask .scp-dup-actions button { appearance: none; border-radius: 999px; padding: 7px 14px; font-size: 13px; font-weight: 700; cursor: pointer; }
+        #scp-dup-mask #scp-dup-over { background: #0f1419; color: #fff; border: 1px solid #0f1419; }
+        #scp-dup-mask #scp-dup-cancel { background: #fff; color: #0f1419; border: 1px solid #cfd9de; }
+        #scp-lib-mask .scp-lib-listwrap { position: relative; flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
+        #scp-lib-mask .scp-lib-spin { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; background: rgba(255,255,255,.55); z-index: 2; pointer-events: none; }
+        #scp-lib-mask .scp-lib-spin[hidden] { display: none; }
+        #scp-lib-mask .scp-lib-spin span { width: 22px; height: 22px; border: 2px solid #cfd9de; border-top-color: #0f1419; border-radius: 50%; animation: sc-spin-anim .8s linear infinite; }
+        #scp-lib-mask .scp-lib-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+
+
         #scp-close { display: inline-flex; align-items: center; justify-content: center; background: none; border: none; color: #eff3f4; padding: 6px; cursor: pointer; border-radius: 50%; transition: all .15s ease; }
         #scp-close .sc-icon { width: 17px; height: 17px; }
         #scp-close:hover { background: rgba(255, 255, 255, 0.12); color: #ffffff; }
@@ -1662,7 +2534,7 @@
         .sc-meta { font-size: 13px; color: #536471; margin-bottom: 12px; }
         .sc-footer { display: flex; justify-content: space-between; font-size: 13px; color: #536471; border-top: 1px solid #eff3f4; padding-top: 12px; }
         .sc-footer-link { display: inline-flex; align-items: center; gap: 3px; color: #536471; }
-        .scp-toast { position: fixed; bottom: 30px; left: 50%; transform: translateX(-50%) translateY(50px); background: rgba(15, 20, 25, 0.92); backdrop-filter: blur(8px); color: #ffffff; padding: 9px 20px; border-radius: 999px; font-size: 13.5px; font-weight: 600; z-index: 1000000; opacity: 0; pointer-events: none; transition: all .25s cubic-bezier(0.16, 1, 0.3, 1); box-shadow: 0 10px 28px rgba(0, 0, 0, 0.25); }
+        .scp-toast { position: fixed; bottom: 30px; left: 50%; transform: translateX(-50%) translateY(50px); background: rgba(15, 20, 25, 0.92); backdrop-filter: blur(8px); color: #ffffff; padding: 9px 20px; border-radius: 999px; font-size: 13.5px; font-weight: 600; z-index: 1000010; opacity: 0; pointer-events: none; transition: all .25s cubic-bezier(0.16, 1, 0.3, 1); box-shadow: 0 10px 28px rgba(0, 0, 0, 0.25); }
         .scp-toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
         .scp-toast-success { background: #00ba7c; color: #ffffff; }
         .scp-toast-error { background: #f4212e; color: #ffffff; }
