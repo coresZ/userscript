@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         X 推文一键生成分享卡片 & 视频深度解析助手 (多线程版)
 // @namespace    http://tampermonkey.net/
-// @version      6.9
+// @version      6.10
 // @description  自定义生成推文图片卡片，支持长文，新增视频极速无水印解析与直接强制下载本地（支持多线程并发，带真实进度）。
 // @author       Assistant
 // @match        https://x.com/*
@@ -1328,9 +1328,15 @@
             href = h;
             break;
         }
-        if (!href) href = location.pathname || '';
-        const link = canonicalPostUrl(href.startsWith('http') ? href : ('https://x.com' + href))
-            || (href.startsWith('http') ? href.split('?')[0] : (href ? 'https://x.com' + href.split('?')[0] : location.href.split('?')[0]));
+        if (!href) href = location.pathname || location.href || '';
+        const abs = href.startsWith('http') ? href : ('https://x.com' + (href.startsWith('/') ? href : '/' + href));
+        const idm = abs.match(/\/(?:status(?:es)?|article)\/(\d+)/) || String(location.href).match(/\/(?:status(?:es)?|article)\/(\d+)/);
+        const userm = abs.match(/\/([A-Za-z0-9_]+)\/(?:status(?:es)?|article)\/\d+/) || String(location.href).match(/\/([A-Za-z0-9_]+)\/(?:status(?:es)?|article)\/\d+/);
+        const userPart = ((handle || '').replace(/^@/, '')) || (userm && userm[1] !== 'i' ? userm[1] : '') || 'i';
+        const isArt = /\/article\//.test(abs) || /\/article\//.test(location.pathname || '');
+        const link = idm
+            ? ('https://x.com/' + userPart + '/' + (isArt ? 'article' : 'status') + '/' + idm[1])
+            : abs.split('?')[0];
 
         return { name, handle, contentHtml, contentPlain, avatar, time, views, images, videos, quoted, link };
     }
@@ -1497,17 +1503,19 @@
 
     function openVideoParser(article) {
         const tweetData = extractTweetData(article);
-        const currentUrl = tweetData.link;
-        const statusMatch = currentUrl.match(/x\.com\/([a-zA-Z0-9_]+)\/status\/(\d+)/) ||
-                            currentUrl.match(/twitter\.com\/([a-zA-Z0-9_]+)\/status\/(\d+)/);
-
-        if (!statusMatch) {
+        const currentUrl = tweetData.link || location.href;
+        const statusMatch = String(currentUrl + ' ' + location.href).match(/(?:x|twitter)\.com\/([A-Za-z0-9_]+)\/(?:status(?:es)?|article)\/(\d+)/i);
+        const idOnly = String(currentUrl + ' ' + location.href).match(/\/(?:status(?:es)?|article)\/(\d+)/);
+        if (!statusMatch && !idOnly) {
             showToast('解析失败：未匹配到有效的推文ID，请确保在具体推文内操作。', 'error');
             return;
         }
-        const username = statusMatch[1];
-        const tweetId = statusMatch[2];
-        showParseModal(username, tweetId, currentUrl);
+        const username = (statusMatch && statusMatch[1] !== 'i' ? statusMatch[1] : '')
+            || String(tweetData.handle || '').replace(/^@/, '')
+            || 'i';
+        const tweetId = (statusMatch && statusMatch[2]) || idOnly[1];
+        const shareUrl = 'https://x.com/' + username + '/status/' + tweetId;
+        showParseModal(username, tweetId, shareUrl);
     }
 
     function showParseModal(username, tweetId, originalUrl) {
@@ -1521,7 +1529,7 @@
                     <h2 class="tm-title">解析成功 🎉</h2>
                     <div id="tm-modal-body"></div>
                     <div class="tm-footer">
-                        解析底层支持保障：vxtwitter API<br>
+                        解析底层：fxtwitter / vxtwitter<br>
                         <a href="https://twitterxz.com/" target="_blank">前往 TwitterXZ 官网体验</a>
                     </div>
                 </div>
@@ -1539,31 +1547,44 @@
         modalBody.innerHTML = '<div class="tm-loading">⏳ 正在深入提取真实媒体链接，请稍候...</div>';
         overlay.classList.add('active');
 
-        const apiUrl = `https://api.vxtwitter.com/${username}/status/${tweetId}`;
-        GM_xmlhttpRequest({
-            method: 'GET',
-            url: apiUrl,
-            onload: function(response) {
+        const paths = [
+            'https://api.fxtwitter.com/' + username + '/status/' + tweetId,
+            'https://api.fxtwitter.com/i/status/' + tweetId,
+            'https://api.vxtwitter.com/' + username + '/status/' + tweetId,
+            'https://api.vxtwitter.com/i/status/' + tweetId
+        ];
+        (async () => {
+            let videos = [];
+            for (const apiUrl of paths) {
                 try {
-                    const data = JSON.parse(response.responseText);
-                    if (data && data.media_extended && data.media_extended.length > 0) {
-                        const videos = data.media_extended.filter(media => media.type === 'video' || media.type === 'gif');
-                        if (videos.length > 0) {
-                            renderVideos(videos, originalUrl, modalBody);
-                        } else {
-                            modalBody.innerHTML = '<div class="tm-loading" style="color: #f4212e;">❌ 此推文中未找到视频内容（可能是纯图片或文本）。</div>';
-                        }
-                    } else {
-                        modalBody.innerHTML = '<div class="tm-loading" style="color: #f4212e;">❌ 未能提取到媒体数据。请检查该推文是否包含有效的视频。</div>';
-                    }
-                } catch (error) {
-                    modalBody.innerHTML = '<div class="tm-loading" style="color: #f4212e;">❌ 解析数据失败，可能是推文被保护或已删除。</div>';
-                }
-            },
-            onerror: function(error) {
-                modalBody.innerHTML = '<div class="tm-loading" style="color: #f4212e;">❌ 网络请求失败，请检查网络后重试。</div>';
+                    const data = await fetchJsonGM(apiUrl);
+                    videos = collectApiVideos(data);
+                    if (videos.length) break;
+                } catch (_) {}
             }
+            if (videos.length) renderVideos(videos, originalUrl, modalBody);
+            else modalBody.innerHTML = '<div class="tm-loading" style="color: #f4212e;">❌ 未能提取到视频。接口不可用或帖子没有视频。</div>';
+        })();
+    }
+    function collectApiVideos(data) {
+        const out = [];
+        const seen = new Set();
+        const add = (url, thumb, type) => {
+            if (!url || seen.has(url)) return;
+            seen.add(url);
+            out.push({ url, thumbnail_url: thumb || '', type: type || 'video' });
+        };
+        const tweet = data && data.tweet;
+        const media = tweet && tweet.media;
+        const list = (media && (media.all || media.videos)) || (data && data.media_extended) || [];
+        list.forEach(m => {
+            if (!m || (m.type && m.type !== 'video' && m.type !== 'gif')) return;
+            const formats = m.formats || [];
+            const mp4s = formats.filter(f => f && f.url && (f.container === 'mp4' || String(f.url).includes('.mp4')));
+            const best = mp4s.sort((a, b) => (b.bitrate || 0) - (a.bitrate || 0))[0];
+            add((best && best.url) || m.url, m.thumbnail_url || '', m.type);
         });
+        return out;
     }
 
     function renderVideos(videos, originalUrl, modalBody) {
@@ -1854,7 +1875,7 @@
                 <div class="scp-title">
                     <span class="scp-title-icon">${ICONS.cardSparkle}</span>
                     <span>推文分享卡片生成器</span>
-                    <span class="scp-version-badge">v6.9</span>
+                    <span class="scp-version-badge">v6.10</span>
                 </div>
                 <button id="scp-close" title="关闭窗口">${ICONS.close}</button>
             </div>
