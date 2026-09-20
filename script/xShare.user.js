@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         X 推文一键生成分享卡片 & 视频深度解析助手 (多线程版)
 // @namespace    http://tampermonkey.net/
-// @version      6.10
-// @description  自定义生成推文图片卡片，支持长文，新增视频极速无水印解析与直接强制下载本地（支持多线程并发，带真实进度）。
+// @version      6.12
+// @description  自定义生成推文图片卡片，支持长文，新增视频极速无水印解析与直接强制下载本地（支持多线程并发，带真实进度）。入口整合进 X 原生「分享」下拉菜单。
 // @author       Assistant
 // @match        https://x.com/*
 // @match        https://twitter.com/*
@@ -26,7 +26,6 @@
     'use strict';
 
 
-    const processed = new WeakSet();
     const STORAGE_KEY_WIDTH = 'sc_custom_card_width';
     const STORAGE_KEY_SHOW_PLAY = 'sc_show_play_button';
     let activePanel = null;
@@ -812,6 +811,7 @@
     const ICONS = {
         cardSparkle: `<svg class="sc-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="14" x="3" y="5" rx="3"/><path d="M7 9h4"/><path d="M7 13h8"/><path d="m19 2 1 2 2 1-2 1-1 2-1-2-2-1 2-1Z"/></svg>`,
         parseVideo: `<svg class="sc-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></svg>`,
+        openLink: `<svg class="sc-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h6v6"/><path d="M10 14 21 3"/><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/></svg>`,
         close: `<svg class="sc-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>`,
         refresh: `<svg class="sc-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/></svg>`,
         download: `<svg class="sc-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/></svg>`,
@@ -1178,8 +1178,8 @@
         const fab = document.createElement('button');
         fab.id = 'sc-article-fab';
         fab.type = 'button';
-        fab.title = '生成文章分享卡片';
-        fab.innerHTML = `${ICONS.cardSparkle}<span>生成文章卡片</span>`;
+        fab.title = '文章卡片';
+        fab.innerHTML = `${ICONS.cardSparkle}<span>文章卡片</span>`;
         fab.addEventListener('click', e => {
             e.preventDefault();
             e.stopPropagation();
@@ -1189,43 +1189,167 @@
         document.body.appendChild(fab);
     }
 
-    function injectButtons() {
-        document.querySelectorAll('article[data-testid="tweet"]').forEach(article => {
-            if (processed.has(article) || article.querySelector('.sc-action-wrap')) return;
-            processed.add(article);
-            const actionBar = article.querySelector('[role="group"]');
-            if (!actionBar) return;
+    // === 推文「分享」下拉菜单集成 ===
+    const SHARE_CARD_LABEL = '生成卡片';
+    const SHARE_VIDEO_LABEL = '视频下载';
+    const SHARE_LINK_LABEL = '打开链接';
+    const SHARE_CARD_TIP = '生成推文 / 文章分享卡片';
+    const SHARE_VIDEO_TIP = '解析提取真实视频链接并下载';
+    const SHARE_LINK_TIP = '在新窗口打开这条帖子的链接';
 
-            const wrap = document.createElement('div');
-            wrap.className = 'sc-action-wrap';
-            wrap.style.display = 'flex';
-            wrap.style.alignItems = 'center';
+    let scShareArticle = null;
+    let scShareMenuArmedUntil = 0;
+    let scInjectedMenu = null;
 
-            const cardBtn = document.createElement('div');
-            cardBtn.className = 'sc-gen-btn';
-            cardBtn.innerHTML = ICONS.cardSparkle;
-            cardBtn.title = '生成推文 / 文章分享卡片';
-            cardBtn.addEventListener('click', e => {
-                e.preventDefault();
-                e.stopPropagation();
-                openCardFromArticle(article);
-            });
+    // 菜单是挂到 body 的 portal，脱离 article，所以点击「分享」时先把所属推文记下来
+    function noteShareTrigger(e) {
+        const target = e.target instanceof Element ? e.target : null;
+        if (!target) return;
+        const btn = target.closest('button, [role="button"], a');
+        if (!btn) return;
+        const testId = (btn.getAttribute('data-testid') || '').toLowerCase();
+        const label = (btn.getAttribute('aria-label') || btn.getAttribute('title') || '').trim();
+        const isShare = testId === 'share'
+            || /^(share\b|分享)/i.test(label)
+            || /share post|分享帖子/i.test(label);
+        if (!isShare) return;
+        const article = btn.closest('article[data-testid="tweet"]');
+        if (!article) return;
+        scShareArticle = article;
+        scShareMenuArmedUntil = Date.now() + 3000;
+    }
+    document.addEventListener('click', noteShareTrigger, true);
 
-            const parseBtn = document.createElement('div');
-            parseBtn.className = 'sc-gen-btn';
-            parseBtn.innerHTML = ICONS.parseVideo;
-            parseBtn.title = '解析提取真实视频链接并下载';
-            parseBtn.addEventListener('click', e => {
-                e.preventDefault();
-                e.stopPropagation();
-                openVideoParser(article);
-            });
+    function resolveShareArticle() {
+        if (scShareArticle && document.contains(scShareArticle)) return scShareArticle;
+        const articles = [...document.querySelectorAll('article[data-testid="tweet"]')];
+        const m = location.pathname.match(/\/(?:i\/)?(?:status|article)\/(\d+)/);
+        if (m) {
+            const hit = articles.find(a => a.querySelector(`a[href*="/status/${m[1]}"]`));
+            if (hit) return hit;
+        }
+        return articles[0] || null;
+    }
 
-            wrap.appendChild(cardBtn);
-            wrap.appendChild(parseBtn);
-            actionBar.appendChild(wrap);
+    // 分享菜单里有「分享帖子 via …」这一项，用它做识别，避免误伤「更多 ⋯」菜单
+    function looksLikeShareMenu(menu) {
+        return /分享帖子\s*via|share post via/i.test(menu.textContent || '');
+    }
+
+    function findMenuTextHost(root, nativeLabel) {
+        const leaves = [...root.querySelectorAll('*')].reverse();
+        return leaves.find(n => !n.children.length && n.textContent.trim() === nativeLabel)
+            || leaves.find(n => !n.children.length && n.textContent.trim())
+            || null;
+    }
+
+    // 复用推文解析出的规范化永久链接（已排除引用推文/媒体链接）
+    function openTweetLink(article) {
+        let url = '';
+        try {
+            url = ((extractTweetData(article) || {}).link || '').trim();
+        } catch (_) {}
+        if (!url && /\/(?:status(?:es)?|article)\/\d+/.test(location.pathname)) {
+            url = location.href.split('?')[0];
+        }
+        if (!url) {
+            showToast('未能取到帖子链接。', 'error');
+            return;
+        }
+        const win = window.open(url, '_blank', 'noopener,noreferrer');
+        if (win) win.opener = null;
+        showToast('已在新窗口打开帖子链接', 'success');
+    }
+
+    // 克隆一个原生菜单项并换掉图标 / 文案，深浅色主题下样式与 X 完全一致
+    function buildShareMenuItem(menu, label, tip, icon, onClick, immediate) {
+        const natives = [...menu.querySelectorAll('[role="menuitem"]')];
+        const native = natives.find(it => !it.classList.contains('sc-menu-item') && (it.textContent || '').trim()) || natives[0] || null;
+        let el = null;
+        if (native) {
+            el = native.cloneNode(true);
+            if (el.tagName === 'A') {
+                const div = document.createElement('div');
+                [...el.attributes].forEach(a => {
+                    if (a.name === 'href' || a.name === 'target' || a.name === 'rel') return;
+                    div.setAttribute(a.name, a.value);
+                });
+                div.innerHTML = el.innerHTML;
+                el = div;
+            }
+            ['data-testid', 'id', 'aria-describedby', 'aria-expanded', 'aria-haspopup', 'aria-controls']
+                .forEach(a => el.removeAttribute(a));
+
+            const nativeText = (native.textContent || '').trim();
+            const holder = document.createElement('span');
+            holder.innerHTML = icon;
+            const nextSvg = holder.firstElementChild;
+            const oldSvg = el.querySelector('svg');
+            if (oldSvg && nextSvg) {
+                nextSvg.setAttribute('style', 'width:18.75px;height:18.75px;');
+                oldSvg.replaceWith(nextSvg);
+            }
+            const textHost = findMenuTextHost(el, nativeText);
+            if (textHost) textHost.textContent = label;
+        }
+        if (!el) {
+            el = document.createElement('div');
+            el.className = 'sc-menu-item-fallback';
+            el.innerHTML = `${icon}<span>${label}</span>`;
+        }
+        el.classList.add('sc-menu-item');
+        el.setAttribute('role', 'menuitem');
+        el.setAttribute('tabindex', '0');
+        el.setAttribute('title', tip);
+        el.addEventListener('click', ev => {
+            ev.preventDefault();
+            ev.stopPropagation();
+            const article = resolveShareArticle();
+            closeShareMenu();
+            if (!article) {
+                showToast('未找到对应推文，请打开推文详情页后重试。', 'error');
+                return;
+            }
+            // window.open 必须在用户手势内同步调用，否则会被浏览器当成弹窗拦截
+            if (immediate) onClick(article);
+            else setTimeout(() => onClick(article), 60);
         });
+        return el;
+    }
+
+    function closeShareMenu() {
+        document.dispatchEvent(new KeyboardEvent('keydown', {
+            key: 'Escape', code: 'Escape', keyCode: 27, which: 27, bubbles: true
+        }));
+        document.body.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }));
+    }
+
+    function injectShareMenuItems() {
+        const menus = [...document.querySelectorAll('[role="menu"]')].filter(m => m.getClientRects().length);
+        if (scInjectedMenu && (!scInjectedMenu.isConnected || !scInjectedMenu.getClientRects().length)) scInjectedMenu = null;
+        if (!menus.length) {
+            if (scShareMenuArmedUntil && Date.now() > scShareMenuArmedUntil) scShareMenuArmedUntil = 0;
+            return;
+        }
+        const armed = scShareMenuArmedUntil && Date.now() < scShareMenuArmedUntil;
+        for (const menu of menus) {
+            const first = menu.querySelector('[role="menuitem"]');
+            if (!first) continue;
+            const container = first.parentElement || menu;
+            if (!armed && menu !== scInjectedMenu && !looksLikeShareMenu(menu)) continue;
+            scInjectedMenu = menu;
+            if (container.querySelector('.sc-menu-item')) return;
+            container.appendChild(buildShareMenuItem(menu, SHARE_CARD_LABEL, SHARE_CARD_TIP, ICONS.cardSparkle, openCardFromArticle));
+            container.appendChild(buildShareMenuItem(menu, SHARE_VIDEO_LABEL, SHARE_VIDEO_TIP, ICONS.parseVideo, openVideoParser));
+            container.appendChild(buildShareMenuItem(menu, SHARE_LINK_LABEL, SHARE_LINK_TIP, ICONS.openLink, openTweetLink, true));
+            scShareMenuArmedUntil = 0;
+            return;
+        }
+    }
+
+    function refreshInjectedUi() {
         injectArticleFab();
+        injectShareMenuItems();
     }
 
     function extractTweetData(article) {
@@ -1875,7 +1999,7 @@
                 <div class="scp-title">
                     <span class="scp-title-icon">${ICONS.cardSparkle}</span>
                     <span>推文分享卡片生成器</span>
-                    <span class="scp-version-badge">v6.10</span>
+                    <span class="scp-version-badge">v6.12</span>
                 </div>
                 <button id="scp-close" title="关闭窗口">${ICONS.close}</button>
             </div>
@@ -2357,14 +2481,15 @@
         .sc-icon-xs { width: 12px; height: 12px; vertical-align: middle; }
         .sc-spin { animation: sc-spin-anim 0.8s linear infinite; }
         @keyframes sc-spin-anim { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
-        .sc-action-wrap { display: flex; align-items: center; }
-        .sc-gen-btn {
-            display: inline-flex; align-items: center; justify-content: center;
-            width: 34px; height: 34px; border-radius: 50%; cursor: pointer; color: #536471;
-            margin-left: 2px; transition: color .15s ease, background-color .15s ease, transform .1s ease; user-select: none;
+        .sc-menu-item { cursor: pointer; }
+        .sc-menu-item .sc-icon { width: 18.75px; height: 18.75px; fill: none; stroke: currentColor; stroke-width: 2; }
+        .sc-menu-item:focus-visible { outline: 2px solid #1d9bf0; outline-offset: -2px; }
+        .sc-menu-item-fallback {
+            display: flex; align-items: center; gap: 12px; padding: 12px 16px; cursor: pointer;
+            font-size: 15px; font-weight: 400; color: inherit; user-select: none;
         }
-        .sc-gen-btn .sc-icon { width: 17px; height: 17px; }
-        .sc-gen-btn:hover { color: #1d9bf0; background-color: rgba(29, 155, 240, 0.1); transform: scale(1.05); }
+        .sc-menu-item-fallback .sc-icon { width: 18.75px; height: 18.75px; }
+        .sc-menu-item-fallback:hover { background-color: rgba(128, 128, 128, 0.15); }
         #share-card-panel {
             position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 980px; max-width: 96vw; max-height: 92vh;
             background: #ffffff; border-radius: 18px; border: 1px solid rgba(0, 0, 0, 0.08); box-shadow: 0 25px 60px -15px rgba(15, 20, 25, 0.35);
@@ -2584,6 +2709,6 @@
         .tm-footer a:hover { text-decoration: underline; }
     `);
 
-    injectButtons();
-    new MutationObserver(injectButtons).observe(document.body, { childList: true, subtree: true });
+    refreshInjectedUi();
+    new MutationObserver(refreshInjectedUi).observe(document.body, { childList: true, subtree: true });
 })();
