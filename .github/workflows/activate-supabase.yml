@@ -3,27 +3,26 @@
 #   SUPABASE_URL   例如 https://xxxx.supabase.co
 #   SUPABASE_KEY   anon public key（eyJ...）
 #   SUPABASE_BUCKET  可选，默认 xshare
-
 name: Activate Supabase
 
 on:
   schedule:
-    # 每 6 天 UTC 00:00 运行
-    - cron: '0 0 */6 * *'
-  workflow_dispatch:  # 允许手动触发
+    - cron: '0 0 * * *'
+  workflow_dispatch:
 
 jobs:
   activate:
     runs-on: ubuntu-latest
     steps:
-      - name: Ping Supabase
+      - name: Replace keepalive.md on Supabase Storage
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
           SUPABASE_BUCKET: ${{ secrets.SUPABASE_BUCKET }}
         run: |
-          set -e
-          if [ -z "$SUPABASE_URL" ] || [ -z "$SUPABASE_KEY" ]; then
+          set -euo pipefail
+
+          if [ -z "${SUPABASE_URL:-}" ] || [ -z "${SUPABASE_KEY:-}" ]; then
             echo "::error::请配置 Secrets: SUPABASE_URL 与 SUPABASE_KEY"
             exit 1
           fi
@@ -31,26 +30,28 @@ jobs:
           BASE="${SUPABASE_URL%/}"
           BUCKET="${SUPABASE_BUCKET:-xshare}"
           export TZ=Asia/Shanghai
-          STAMP=$(date '+%Y-%m-%d %H:%M:%S %Z')
-          echo "激活 $STAMP → $BASE"
+          LINE=$(date '+%Y-%m-%d %H:%M:%S %Z')
+          FILE="keepalive/ping.md"
 
-          # REST 探测（表不存在也会唤醒项目）
-          CODE=$(curl -sS -o /tmp/sb_rest.txt -w "%{http_code}" \
+          printf '%s\n' "$LINE" > /tmp/ping.md
+          echo "替换 $BUCKET/$FILE ← $LINE"
+
+          CODE=$(curl -sS -o /tmp/sb_up.txt -w "%{http_code}" \
+            -X POST \
             -H "apikey: $SUPABASE_KEY" \
             -H "Authorization: Bearer $SUPABASE_KEY" \
-            -H "Accept: application/json" \
-            "$BASE/rest/v1/cards?select=id&limit=1" || true)
-          echo "REST HTTP $CODE"
-          head -c 200 /tmp/sb_rest.txt 2>/dev/null || true
+            -H "Content-Type: text/markdown; charset=utf-8" \
+            -H "x-upsert: true" \
+            --data-binary @/tmp/ping.md \
+            "$BASE/storage/v1/object/${BUCKET}/${FILE}" || true)
+
+          echo "HTTP $CODE"
+          cat /tmp/sb_up.txt 2>/dev/null || true
           echo
 
-          # Storage 探测
-          CODE2=$(curl -sS -o /tmp/sb_storage.txt -w "%{http_code}" \
-            -H "apikey: $SUPABASE_KEY" \
-            -H "Authorization: Bearer $SUPABASE_KEY" \
-            "$BASE/storage/v1/bucket/$BUCKET" || true)
-          echo "Storage HTTP $CODE2"
-          head -c 200 /tmp/sb_storage.txt 2>/dev/null || true
-          echo
-
-          echo "完成：激活 $STAMP"
+          if [[ "$CODE" =~ ^2 ]]; then
+            echo "✅ 完成"
+            exit 0
+          fi
+          echo "::error::上传失败 HTTP $CODE"
+          exit 1
