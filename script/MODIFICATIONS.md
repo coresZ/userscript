@@ -7,6 +7,18 @@
 
 ## 修改记录
 
+### greasyfork-auto-login.user.js · 已登录时隐藏悬浮入口（v1.3.2 → v1.3.3）
+
+- **功能**：登录成功后不再显示右下角 `#gf-al-fab`（🔑 悬浮按钮）；未登录页面保持原样，作为配置/登录入口。
+- **修改内容**：
+  - 新增 `removeFab()`：按 id 移除悬浮按钮（带 `parentNode` 判空）。
+  - `ensureFab()` 开头改为先判断 `isLoggedIn()`：已登录则 `removeFab()` 后直接返回，不再注入样式与按钮；未登录才注入 `#gf-al-fab`。
+  - `autoLogin()` 命中登录成功分支时立即 `removeFab()`，覆盖「登录成功但尚未 reload」的 1 秒窗口。
+  - 已登录状态下仍可通过油猴菜单「⚙ 打开设置面板」修改账号/密码/Secret（`registerMenuCommand` 不受影响）。
+  - `@version` 同步为 `1.3.3`。
+- **验证**：`node --check` 通过；jsdom 夹具 11 条断言全部通过（未登录：FAB 存在/挂载在 `documentElement`/样式注入含 `#gf-al-fab` 规则/注册 2 个菜单；已登录：FAB 不存在/菜单仍注册/菜单可打开面板/关闭面板后 FAB 仍不出现），临时测试目录已删除。
+- **涉及文件与位置**：`greasyfork-auto-login.user.js`（元数据 `@version`；`removeFab`、`ensureFab`；`autoLogin` 登录成功分支）
+
 ### xShare.user.js · 分享菜单新增「打开链接」（v6.11 → v6.12）
 
 - **功能**：在 X 原生「分享」下拉菜单里，于前两项之后追加第三项 `打开链接`，在新窗口（新标签页）打开该帖子的永久链接。
