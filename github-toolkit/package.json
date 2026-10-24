@@ -1,0 +1,20 @@
+{
+  "name": "github-toolkit",
+  "version": "2.5.2",
+  "description": "高内聚低耦合的 GitHub 模块化工具台（图标操作 + 复制上游链接）",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview"
+  },
+  "keywords": ["tampermonkey", "userscript", "github", "toolkit", "plugin"],
+  "author": "Cores",
+  "license": "MIT",
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "typescript": "^5.7.0",
+    "vite": "^6.0.0",
+    "vite-plugin-monkey": "^5.0.0"
+  }
+}
