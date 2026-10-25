@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         GitHub Toolkit
 // @namespace    github-toolkit
-// @version      2.6.0
+// @version      2.6.1
 // @author       Cores
 // @description  高内聚低耦合的 GitHub 模块化工具台（图标操作 + 复制上游链接）
 // @license      MIT
@@ -79,6 +79,11 @@
     --ghtk-ctl-font: 12px;     /* 控件统一字号 */
     --ghtk-ctl-gap: 8px;       /* 控件间距 */
     --ghtk-icon: 14px;         /* 图标统一尺寸 */
+    --ghtk-gap: 8px;           /* 区块内部垂直间距 */
+    --ghtk-gap-lg: 12px;       /* 区块之间分隔间距 */
+    --ghtk-fs-label: 12px;     /* 区块小标题 / 字段标签 */
+    --ghtk-fs-small: 10.5px;   /* 辅助说明 / 分段控件文字 */
+    --ghtk-fs-mono: 11px;      /* 等宽内容（地址 / 命令） */
   }
 
   /* ===== 根容器 reset：抵御 GitHub 全局样式侵入 ===== */
@@ -1204,15 +1209,159 @@
       line-height: 1.5 !important;
     }
 
+    /* ===== 加速 Tab：仓库地址 + ego 克隆 ===== */
     .ghtk-accel-setting {
       padding: 12px 16px !important;
       border-bottom: 1px solid var(--borderColor-muted, #d8dee4) !important;
     }
     .ghtk-accel-setting label {
-      font-size: 12px !important;
+      font-size: var(--ghtk-fs-label) !important;
       color: var(--fgColor-muted, #59636e) !important;
       display: block !important;
       margin-bottom: 6px !important;
+    }
+    .ghtk-accel-body {
+      padding: 12px 16px 16px !important;
+    }
+    .ghtk-accel-repo {
+      display: flex !important;
+      flex-direction: column !important;
+      gap: 10px !important;
+      margin-bottom: 0 !important;
+    }
+    .ghtk-accel-url {
+      font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace !important;
+      font-size: var(--ghtk-fs-mono) !important;
+      word-break: break-all !important;
+      line-height: 1.5 !important;
+      padding: 8px 10px !important;
+      margin: 0 !important;
+      background: var(--bgColor-muted, #f6f8fa) !important;
+      border-radius: var(--ghtk-ctl-radius) !important;
+      color: var(--fgColor-default, #1f2328) !important;
+    }
+    .ghtk-divider {
+      height: 1px !important;
+      background: var(--borderColor-muted, #d8dee4) !important;
+      margin: var(--ghtk-gap-lg) 0 !important;
+    }
+    .ghtk-ego {
+      display: flex !important;
+      flex-direction: column !important;
+      gap: 12px !important;
+    }
+    /* 命令框单独加一点上方留白，和身份输入框拉开层次 */
+    .ghtk-ego .ghtk-cmd-wrap {
+      margin-top: 2px !important;
+    }
+    /* 复制按钮与上方命令框、下方说明的关系更清晰 */
+    .ghtk-ego #ghtk-copy-ego {
+      margin-top: 2px !important;
+    }
+    .ghtk-ego-head {
+      display: flex !important;
+      align-items: center !important;
+      justify-content: space-between !important;
+      gap: var(--ghtk-gap) !important;
+      margin-bottom: 0 !important;
+    }
+    .ghtk-ego-title {
+      font-size: var(--ghtk-fs-label) !important;
+      font-weight: 600 !important;
+      color: var(--fgColor-default, #1f2328) !important;
+      flex-shrink: 0 !important;
+    }
+    /* 分段控件：高度与其它控件对齐（30px） */
+    .ghtk-seg {
+      display: flex !important;
+      width: 118px !important;
+      height: var(--ghtk-ctl-h) !important;
+      flex-shrink: 0 !important;
+      border: 1px solid var(--borderColor-default, #d0d7de) !important;
+      border-radius: var(--ghtk-ctl-radius) !important;
+      overflow: hidden !important;
+      background: var(--bgColor-muted, #f6f8fa) !important;
+      box-sizing: border-box !important;
+    }
+    .ghtk-seg button {
+      flex: 1 !important;
+      height: 100% !important;
+      border: none !important;
+      background: none !important;
+      font-size: var(--ghtk-fs-small) !important;
+      font-weight: 500 !important;
+      font-family: inherit !important;
+      color: var(--fgColor-muted, #59636e) !important;
+      cursor: pointer !important;
+      padding: 0 !important;
+    }
+    .ghtk-seg button.on {
+      background: var(--bgColor-default, #fff) !important;
+      color: #0969da !important;
+      font-weight: 600 !important;
+      box-shadow: 0 1px 3px rgba(31,35,40,.1) !important;
+    }
+    /* 身份输入框 */
+    .ghtk-field-input {
+      width: 100% !important;
+      height: var(--ghtk-ctl-h) !important;
+      padding: 0 10px !important;
+      margin: 0 !important;
+      border: 1px solid var(--borderColor-default, #d0d7de) !important;
+      border-radius: var(--ghtk-ctl-radius) !important;
+      font-size: var(--ghtk-ctl-font) !important;
+      font-family: inherit !important;
+      color: var(--fgColor-default, #1f2328) !important;
+      background: var(--bgColor-default, #fff) !important;
+      box-sizing: border-box !important;
+    }
+    .ghtk-field-input:focus {
+      outline: 2px solid #0969da !important;
+      outline-offset: -1px !important;
+    }
+    /* 命令预览：固定高度 + 横向滚动，绝不撑高面板 */
+    .ghtk-cmd-wrap {
+      position: relative !important;
+      margin: 0 !important;
+    }
+    .ghtk-cmd {
+      height: 38px !important;
+      padding: 0 10px !important;
+      border: 1px solid var(--borderColor-default, #d0d7de) !important;
+      border-radius: var(--ghtk-ctl-radius) !important;
+      background: var(--bgColor-muted, #f6f8fa) !important;
+      font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace !important;
+      font-size: var(--ghtk-fs-mono) !important;
+      line-height: 36px !important;
+      color: var(--fgColor-default, #1f2328) !important;
+      white-space: pre !important;
+      overflow-x: auto !important;
+      overflow-y: hidden !important;
+      box-sizing: border-box !important;
+    }
+    .ghtk-cmd::-webkit-scrollbar { height: 4px !important; }
+    .ghtk-cmd::-webkit-scrollbar-thumb {
+      background: var(--borderColor-default, #d0d7de) !important;
+      border-radius: 2px !important;
+    }
+    .ghtk-cmd-prompt {
+      color: var(--fgColor-muted, #59636e) !important;
+      margin-right: 6px !important;
+    }
+    .ghtk-hint-list {
+      margin-top: 4px !important;
+      padding-top: 10px !important;
+      border-top: 1px dashed var(--borderColor-muted, #d8dee4) !important;
+      font-size: var(--ghtk-fs-small) !important;
+      line-height: 1.6 !important;
+      color: var(--fgColor-muted, #59636e) !important;
+    }
+    .ghtk-hint-list code {
+      font-family: ui-monospace, SFMono-Regular, monospace !important;
+      font-size: var(--ghtk-fs-small) !important;
+      background: #afb8c133 !important;
+      padding: 1px 4px !important;
+      border-radius: 3px !important;
     }
 
     @media (max-width: 480px) {
@@ -2022,7 +2171,7 @@
     });
   }
   const POPOVER_CLASS = "ghtk-popover";
-  function escapeHtml$1(s) {
+  function escapeHtml$2(s) {
     return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
   }
   function compactNum$1(n) {
@@ -2061,18 +2210,18 @@
       ["Open Issues", String(about.openIssues)]
     ];
     const topics = about.topics.length ? `<div class="ghtk-pop-sec">Topics · ${about.topics.length}</div>
-       <div class="ghtk-pop-topics">${about.topics.map((t) => `<span class="ghtk-topic">${escapeHtml$1(t)}</span>`).join("")}</div>` : "";
+       <div class="ghtk-pop-topics">${about.topics.map((t) => `<span class="ghtk-topic">${escapeHtml$2(t)}</span>`).join("")}</div>` : "";
     const home = about.homepage ? `<div class="ghtk-pop-sec">主页</div>
-       <div class="ghtk-pop-home"><a href="${escapeHtml$1(about.homepage)}" target="_blank" rel="noreferrer">${escapeHtml$1(
+       <div class="ghtk-pop-home"><a href="${escapeHtml$2(about.homepage)}" target="_blank" rel="noreferrer">${escapeHtml$2(
     about.homepage.replace(/^https?:\/\//, "")
   )}</a></div>` : "";
     const footHtml = actions.length ? `<div class="ghtk-pop-foot">${actions.map((a, i) => {
     if (a.href) {
-      return `<a class="ghtk-btn ${a.primary ? "primary" : ""}" data-act="${i}" href="${escapeHtml$1(
+      return `<a class="ghtk-btn ${a.primary ? "primary" : ""}" data-act="${i}" href="${escapeHtml$2(
         a.href
-      )}" target="_blank" rel="noreferrer">${escapeHtml$1(a.label)}</a>`;
+      )}" target="_blank" rel="noreferrer">${escapeHtml$2(a.label)}</a>`;
     }
-    return `<button class="ghtk-btn ${a.primary ? "primary" : ""}" data-act="${i}" type="button">${escapeHtml$1(
+    return `<button class="ghtk-btn ${a.primary ? "primary" : ""}" data-act="${i}" type="button">${escapeHtml$2(
       a.label
     )}</button>`;
   }).join("")}</div>` : "";
@@ -2082,17 +2231,17 @@
     el.innerHTML = `
     <div class="ghtk-pop-arrow"></div>
     <div class="ghtk-pop-head">
-      <div class="ghtk-pop-title" title="${escapeHtml$1(about.full_name)}">${escapeHtml$1(about.full_name)}</div>
+      <div class="ghtk-pop-title" title="${escapeHtml$2(about.full_name)}">${escapeHtml$2(about.full_name)}</div>
       <button class="ghtk-icon-btn ghtk-pop-close" type="button" title="关闭">✕</button>
     </div>
     <div class="ghtk-pop-body">
-      <div class="ghtk-pop-desc">${escapeHtml$1(desc)}</div>
+      <div class="ghtk-pop-desc">${escapeHtml$2(desc)}</div>
       <div class="ghtk-pop-grid">
         ${metaRows.map(
     ([k, v]) => `
           <div class="ghtk-pop-cell">
-            <div class="ghtk-pop-k">${escapeHtml$1(k)}</div>
-            <div class="ghtk-pop-v" title="${escapeHtml$1(v)}">${escapeHtml$1(v)}</div>
+            <div class="ghtk-pop-k">${escapeHtml$2(k)}</div>
+            <div class="ghtk-pop-v" title="${escapeHtml$2(v)}">${escapeHtml$2(v)}</div>
           </div>`
   ).join("")}
       </div>
@@ -2215,7 +2364,7 @@
     if (about.language) {
       const color = LANG_COLORS[about.language] || "#8b949e";
       metaItems.push(
-        `<span class="item"><span class="ghtk-lang-dot" style="background:${color}"></span><span>${escapeHtml(about.language)}</span></span>`
+        `<span class="item"><span class="ghtk-lang-dot" style="background:${color}"></span><span>${escapeHtml$1(about.language)}</span></span>`
       );
     }
     if (about.stars) {
@@ -2229,15 +2378,15 @@
       );
     }
     if (about.license) {
-      metaItems.push(`<span class="item"><span>${escapeHtml(about.license)}</span></span>`);
+      metaItems.push(`<span class="item"><span>${escapeHtml$1(about.license)}</span></span>`);
     }
     const showTopics = about.topics.slice(0, 3);
     const restTopics = about.topics.length - showTopics.length;
-    const topicsHtml = about.topics.length ? `<div class="ghtk-topics">${showTopics.map((t) => `<span class="ghtk-topic">${escapeHtml(t)}</span>`).join("")}${restTopics > 0 ? `<span class="ghtk-topic" style="color:#59636e;background:#f6f8fa;border-color:#d0d7de">+${restTopics}</span>` : ""}</div>` : '<div class="ghtk-topics"></div>';
+    const topicsHtml = about.topics.length ? `<div class="ghtk-topics">${showTopics.map((t) => `<span class="ghtk-topic">${escapeHtml$1(t)}</span>`).join("")}${restTopics > 0 ? `<span class="ghtk-topic" style="color:#59636e;background:#f6f8fa;border-color:#d0d7de">+${restTopics}</span>` : ""}</div>` : '<div class="ghtk-topics"></div>';
     return `
     <div class="ghtk-about">
       <div class="ghtk-about-top">
-        <div class="ghtk-about-desc">${desc ? escapeHtml(desc) : '<span style="font-style:italic">暂无简介</span>'}</div>
+        <div class="ghtk-about-desc">${desc ? escapeHtml$1(desc) : '<span style="font-style:italic">暂无简介</span>'}</div>
         <button class="ghtk-about-expand" id="ghtk-about-detail" type="button" data-ghtk-popover-trigger title="查看完整信息">${expandIcon}</button>
       </div>
       <div class="ghtk-about-meta">${metaItems.join("")}</div>
@@ -2245,7 +2394,7 @@
     </div>
   `;
   }
-  function escapeHtml(s) {
+  function escapeHtml$1(s) {
     return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
   }
   const UpstreamBindPlugin = {
@@ -2710,12 +2859,25 @@
     };
   }
   const ACCEL_BASE_KEY = "accel-base-url";
+  const EGO_IDENTITY_KEY = "ego-identity";
+  const EGO_PROTOCOL_KEY = "ego-protocol";
   const DEFAULT_ACCEL_BASE = "https://github.akams.cn/";
   function getAccelBase() {
     return GM_getValue(ACCEL_BASE_KEY, DEFAULT_ACCEL_BASE);
   }
   function setAccelBase(url) {
     GM_setValue(ACCEL_BASE_KEY, url);
+  }
+  function getEgoProtocol() {
+    return GM_getValue(EGO_PROTOCOL_KEY, "ssh") === "https" ? "https" : "ssh";
+  }
+  function getEgoIdentity() {
+    return (GM_getValue(EGO_IDENTITY_KEY, "") || "").trim();
+  }
+  function buildCloneCommand(owner, repo, identity, protocol) {
+    const url = protocol === "ssh" ? `git@github.com:${owner}/${repo}.git` : `https://github.com/${owner}/${repo}.git`;
+    const id = identity.trim();
+    return id ? `ego clone ${id} ${url}` : `git clone ${url}`;
   }
   const AccelPlugin = {
     id: "github-accel",
@@ -2739,10 +2901,10 @@
           <label>加速地址（默认 ${DEFAULT_ACCEL_BASE}）</label>
           <div class="ghtk-form-row">
             <input type="text" id="ghtk-accel-base" value="${accelBase}" placeholder="${DEFAULT_ACCEL_BASE}" />
-            <button class="ghtk-btn primary" id="ghtk-save-accel" type="button">保存</button>
+            <button class="ghtk-btn" id="ghtk-save-accel" type="button">保存</button>
           </div>
         </div>
-        <div class="ghtk-scroll-area" style="padding-top:12px;">
+        <div class="ghtk-scroll-area ghtk-accel-body">
           <div id="ghtk-accel-actions"></div>
         </div>
       `;
@@ -2765,33 +2927,98 @@
     const container = document.getElementById("ghtk-accel-actions");
     if (!container) return;
     const page = ctx.page;
-    const base = getAccelBase();
     if (!page.owner || !page.repo) {
       container.innerHTML = `<div class="ghtk-empty">进入仓库后可用</div>`;
       return;
     }
-    const repoUrl = `https://github.com/${page.owner}/${page.repo}`;
+    const owner = page.owner;
+    const repo = page.repo;
+    const base = getAccelBase();
+    const repoUrl = `https://github.com/${owner}/${repo}`;
     const accelUrl = `${base}?url=${encodeURIComponent(repoUrl)}`;
+    const identity = getEgoIdentity();
+    const protocol = getEgoProtocol();
+    const command = buildCloneCommand(owner, repo, identity, protocol);
     container.innerHTML = `
-    <div style="margin-bottom:12px;">
-      <div style="font-size:12px;color:var(--fgColor-muted);margin-bottom:6px;">当前仓库加速地址</div>
-      <div style="font-size:12px;word-break:break-all;margin-bottom:8px;padding:8px;background:var(--bgColor-muted);border-radius:6px;">
-        ${accelUrl}
-      </div>
+    <div class="ghtk-accel-repo">
+      <div class="ghtk-sec-label">当前仓库加速地址</div>
+      <div class="ghtk-accel-url">${accelUrl}</div>
       <div class="ghtk-btn-row">
         <a class="ghtk-btn primary" href="${accelUrl}" target="_blank">加速打开</a>
         <button class="ghtk-btn" id="ghtk-copy-accel" type="button">复制</button>
       </div>
     </div>
+
+    <div class="ghtk-divider"></div>
+
+    <div class="ghtk-ego">
+      <div class="ghtk-ego-head">
+        <div class="ghtk-ego-title">克隆命令</div>
+        <div class="ghtk-seg" id="ghtk-ego-proto">
+          <button type="button" data-proto="ssh" class="${protocol === "ssh" ? "on" : ""}">SSH</button>
+          <button type="button" data-proto="https" class="${protocol === "https" ? "on" : ""}">HTTPS</button>
+        </div>
+      </div>
+
+      <input class="ghtk-field-input" type="text" id="ghtk-ego-identity"
+        value="${identity.replace(/"/g, "&quot;")}" placeholder="ego 身份名（留空用 git）" autocomplete="off" spellcheck="false" />
+
+      <div class="ghtk-cmd-wrap">
+        <div class="ghtk-cmd" id="ghtk-ego-cmd"><span class="ghtk-cmd-prompt">$</span>${escapeHtml(command)}</div>
+      </div>
+
+      <button class="ghtk-btn" id="ghtk-copy-ego" type="button">复制命令</button>
+
+      <div class="ghtk-hint-list" id="ghtk-ego-hint">${hintHtml(!!identity)}</div>
+    </div>
   `;
     document.getElementById("ghtk-copy-accel")?.addEventListener("click", () => {
-      const url = `${getAccelBase()}?url=${encodeURIComponent(repoUrl)}`;
-      navigator.clipboard.writeText(url).then(() => ctx.ui.toast("已复制")).catch(() => ctx.ui.toast("复制失败"));
+      navigator.clipboard.writeText(`${getAccelBase()}?url=${encodeURIComponent(repoUrl)}`).then(() => ctx.ui.toast("已复制")).catch(() => ctx.ui.toast("复制失败"));
     });
+    const identityInput = document.getElementById("ghtk-ego-identity");
+    const cmdEl = document.getElementById("ghtk-ego-cmd");
+    const hintEl = document.getElementById("ghtk-ego-hint");
+    const refreshCommand = () => {
+      const id = identityInput?.value.trim() || "";
+      if (cmdEl) {
+        const next = buildCloneCommand(owner, repo, id, getEgoProtocol());
+        cmdEl.innerHTML = `<span class="ghtk-cmd-prompt">$</span>${escapeHtml(next)}`;
+      }
+      if (hintEl) hintEl.innerHTML = hintHtml(!!id);
+    };
+    identityInput?.addEventListener("input", () => {
+      GM_setValue(EGO_IDENTITY_KEY, identityInput.value);
+      refreshCommand();
+    });
+    document.querySelectorAll("#ghtk-ego-proto button").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const proto = btn.dataset.proto || "ssh";
+        GM_setValue(EGO_PROTOCOL_KEY, proto);
+        document.querySelectorAll("#ghtk-ego-proto button").forEach((b) => {
+          b.classList.toggle("on", b === btn);
+        });
+        refreshCommand();
+      });
+    });
+    document.getElementById("ghtk-copy-ego")?.addEventListener("click", () => {
+      const cmd = buildCloneCommand(owner, repo, identityInput?.value.trim() || "", getEgoProtocol());
+      navigator.clipboard.writeText(cmd).then(() => ctx.ui.toast("已复制")).catch(() => ctx.ui.toast("复制失败"));
+    });
+  }
+  function escapeHtml(s) {
+    return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+  }
+  function hintHtml(hasIdentity) {
+    if (hasIdentity) {
+      return `· 使用 ego 按身份克隆，身份名需与本机 <code>ego users</code> 一致<br>
+            · 在本机终端执行，脚本无法直接运行命令`;
+    }
+    return `· 未填身份名，使用普通 git 克隆<br>
+          · 填入 ego 身份名后自动改用 ego 命令`;
   }
   const builtinPlugins = [UpstreamBindPlugin, AccelPlugin];
   const DEFAULT_ENABLED = ["upstream-bind", "github-accel"];
-  const TOOLKIT_VERSION = "2.6.0";
+  const TOOLKIT_VERSION = "2.6.1";
   const eventBus = new EventBus();
   const dom = new DOMHelper();
   const ui = new UIManager();

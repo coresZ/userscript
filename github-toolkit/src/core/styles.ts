@@ -19,6 +19,11 @@ const CSS = `
     --ghtk-ctl-font: 12px;     /* 控件统一字号 */
     --ghtk-ctl-gap: 8px;       /* 控件间距 */
     --ghtk-icon: 14px;         /* 图标统一尺寸 */
+    --ghtk-gap: 8px;           /* 区块内部垂直间距 */
+    --ghtk-gap-lg: 12px;       /* 区块之间分隔间距 */
+    --ghtk-fs-label: 12px;     /* 区块小标题 / 字段标签 */
+    --ghtk-fs-small: 10.5px;   /* 辅助说明 / 分段控件文字 */
+    --ghtk-fs-mono: 11px;      /* 等宽内容（地址 / 命令） */
   }
 
   /* ===== 根容器 reset：抵御 GitHub 全局样式侵入 ===== */
@@ -1144,15 +1149,159 @@ const CSS = `
       line-height: 1.5 !important;
     }
 
+    /* ===== 加速 Tab：仓库地址 + ego 克隆 ===== */
     .ghtk-accel-setting {
       padding: 12px 16px !important;
       border-bottom: 1px solid var(--borderColor-muted, #d8dee4) !important;
     }
     .ghtk-accel-setting label {
-      font-size: 12px !important;
+      font-size: var(--ghtk-fs-label) !important;
       color: var(--fgColor-muted, #59636e) !important;
       display: block !important;
       margin-bottom: 6px !important;
+    }
+    .ghtk-accel-body {
+      padding: 12px 16px 16px !important;
+    }
+    .ghtk-accel-repo {
+      display: flex !important;
+      flex-direction: column !important;
+      gap: 10px !important;
+      margin-bottom: 0 !important;
+    }
+    .ghtk-accel-url {
+      font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace !important;
+      font-size: var(--ghtk-fs-mono) !important;
+      word-break: break-all !important;
+      line-height: 1.5 !important;
+      padding: 8px 10px !important;
+      margin: 0 !important;
+      background: var(--bgColor-muted, #f6f8fa) !important;
+      border-radius: var(--ghtk-ctl-radius) !important;
+      color: var(--fgColor-default, #1f2328) !important;
+    }
+    .ghtk-divider {
+      height: 1px !important;
+      background: var(--borderColor-muted, #d8dee4) !important;
+      margin: var(--ghtk-gap-lg) 0 !important;
+    }
+    .ghtk-ego {
+      display: flex !important;
+      flex-direction: column !important;
+      gap: 12px !important;
+    }
+    /* 命令框单独加一点上方留白，和身份输入框拉开层次 */
+    .ghtk-ego .ghtk-cmd-wrap {
+      margin-top: 2px !important;
+    }
+    /* 复制按钮与上方命令框、下方说明的关系更清晰 */
+    .ghtk-ego #ghtk-copy-ego {
+      margin-top: 2px !important;
+    }
+    .ghtk-ego-head {
+      display: flex !important;
+      align-items: center !important;
+      justify-content: space-between !important;
+      gap: var(--ghtk-gap) !important;
+      margin-bottom: 0 !important;
+    }
+    .ghtk-ego-title {
+      font-size: var(--ghtk-fs-label) !important;
+      font-weight: 600 !important;
+      color: var(--fgColor-default, #1f2328) !important;
+      flex-shrink: 0 !important;
+    }
+    /* 分段控件：高度与其它控件对齐（30px） */
+    .ghtk-seg {
+      display: flex !important;
+      width: 118px !important;
+      height: var(--ghtk-ctl-h) !important;
+      flex-shrink: 0 !important;
+      border: 1px solid var(--borderColor-default, #d0d7de) !important;
+      border-radius: var(--ghtk-ctl-radius) !important;
+      overflow: hidden !important;
+      background: var(--bgColor-muted, #f6f8fa) !important;
+      box-sizing: border-box !important;
+    }
+    .ghtk-seg button {
+      flex: 1 !important;
+      height: 100% !important;
+      border: none !important;
+      background: none !important;
+      font-size: var(--ghtk-fs-small) !important;
+      font-weight: 500 !important;
+      font-family: inherit !important;
+      color: var(--fgColor-muted, #59636e) !important;
+      cursor: pointer !important;
+      padding: 0 !important;
+    }
+    .ghtk-seg button.on {
+      background: var(--bgColor-default, #fff) !important;
+      color: #0969da !important;
+      font-weight: 600 !important;
+      box-shadow: 0 1px 3px rgba(31,35,40,.1) !important;
+    }
+    /* 身份输入框 */
+    .ghtk-field-input {
+      width: 100% !important;
+      height: var(--ghtk-ctl-h) !important;
+      padding: 0 10px !important;
+      margin: 0 !important;
+      border: 1px solid var(--borderColor-default, #d0d7de) !important;
+      border-radius: var(--ghtk-ctl-radius) !important;
+      font-size: var(--ghtk-ctl-font) !important;
+      font-family: inherit !important;
+      color: var(--fgColor-default, #1f2328) !important;
+      background: var(--bgColor-default, #fff) !important;
+      box-sizing: border-box !important;
+    }
+    .ghtk-field-input:focus {
+      outline: 2px solid #0969da !important;
+      outline-offset: -1px !important;
+    }
+    /* 命令预览：固定高度 + 横向滚动，绝不撑高面板 */
+    .ghtk-cmd-wrap {
+      position: relative !important;
+      margin: 0 !important;
+    }
+    .ghtk-cmd {
+      height: 38px !important;
+      padding: 0 10px !important;
+      border: 1px solid var(--borderColor-default, #d0d7de) !important;
+      border-radius: var(--ghtk-ctl-radius) !important;
+      background: var(--bgColor-muted, #f6f8fa) !important;
+      font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace !important;
+      font-size: var(--ghtk-fs-mono) !important;
+      line-height: 36px !important;
+      color: var(--fgColor-default, #1f2328) !important;
+      white-space: pre !important;
+      overflow-x: auto !important;
+      overflow-y: hidden !important;
+      box-sizing: border-box !important;
+    }
+    .ghtk-cmd::-webkit-scrollbar { height: 4px !important; }
+    .ghtk-cmd::-webkit-scrollbar-thumb {
+      background: var(--borderColor-default, #d0d7de) !important;
+      border-radius: 2px !important;
+    }
+    .ghtk-cmd-prompt {
+      color: var(--fgColor-muted, #59636e) !important;
+      margin-right: 6px !important;
+    }
+    .ghtk-hint-list {
+      margin-top: 4px !important;
+      padding-top: 10px !important;
+      border-top: 1px dashed var(--borderColor-muted, #d8dee4) !important;
+      font-size: var(--ghtk-fs-small) !important;
+      line-height: 1.6 !important;
+      color: var(--fgColor-muted, #59636e) !important;
+    }
+    .ghtk-hint-list code {
+      font-family: ui-monospace, SFMono-Regular, monospace !important;
+      font-size: var(--ghtk-fs-small) !important;
+      background: #afb8c133 !important;
+      padding: 1px 4px !important;
+      border-radius: 3px !important;
     }
 
     @media (max-width: 480px) {

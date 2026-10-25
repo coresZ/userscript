@@ -23,8 +23,11 @@
 
 #### 控件尺寸（强制，禁止破例）
 - 所有可交互控件统一：**高度 30px、圆角 6px、字号 12px**，变量引用 `var(--ghtk-ctl-*)`，**禁止硬编码** 28/32/34px 等数值。
+- **字号只能从 token 取值**：`--ghtk-fs-label`(12px) / `--ghtk-fs-mono`(11px) / `--ghtk-fs-small`(10.5px)，禁止在样式里散写任意字号。
+- **间距只能从 token 取值**：`--ghtk-gap`(8px) / `--ghtk-gap-lg`(12px)。同一容器内多个子元素的垂直间距**必须用 flex `gap` 统一控制**，禁止各元素自写 `margin-bottom`（会与 gap 叠加造成粘连或疏密不均）。
+- 表单控件相邻时垂直间距**不小于 12px**；说明性文字与操作区之间用 10px 内边距 + 虚线上边框分隔，不要只靠 margin。
 - 按钮类：`.ghtk-btn`（`min-width: 76px`，同排用 `.ghtk-btn-row` 等宽 `flex: 1`）；图标按钮 `.ghtk-icon-btn`（30×30，图标 14px）。
-- 输入框类：`.ghtk-search input` / `.ghtk-field input` / `.ghtk-modal-input` 同为 30px 高。
+- 输入框类：`.ghtk-search input` / `.ghtk-field input` / `.ghtk-field-input` / `.ghtk-modal-input` 同为 30px 高；分段控件 `.ghtk-seg` 也必须是 30px 高。
 
 #### 交互与视觉（强制）
 - **主操作按钮（蓝色实心 `.ghtk-btn.primary`）一屏最多一个，位置必须固定**。当前设计中它固定在右栏详情底部（`.ghtk-detail-foot`），禁止新增同层级的蓝色实心按钮，禁止在不同卡片/行内各自放一个。
@@ -108,6 +111,18 @@
 - **用户展示区分**：详情头部拆为「上游所有者」与「当前用户」两项，避免同名混淆；左栏当前仓库相关项加蓝点标记，默认选中优先级 = 当前仓库是上游 > 当前仓库是下游 > 第一条。
 - **版本**：`package.json` / `vite.config.ts` / `TOOLKIT_VERSION` 三处同步至 2.5.3。
 - **git**：根 `.gitignore` 与子目录 `.gitignore` 均移除 `dist/`，构建产物纳入版本控制。
+
+#### v2.6.1 加速面板新增克隆命令区块
+
+- **新增「克隆命令」区块**（加速 Tab 下半部，经视觉稿选定紧凑版）：
+  - 身份名输入框：**留空时生成 `git clone`，填入后自动切换为 `ego clone <身份> <url>`**，实时更新，持久化到 `GM.setValue('ego-identity')`。
+  - SSH / HTTPS 分段控件（30px 高，与其它控件对齐），持久化到 `ego-protocol`，默认 SSH。
+  - 命令预览框：固定 38px 高、等宽字体、`white-space: pre` 保留空格、横向滚动，长命令不撑高面板。
+  - 「复制命令」按钮 + 底部说明随状态切换（未填/已填两种文案）。
+  - 明确标注「在本机终端执行，脚本无法直接运行命令」——油猴沙箱无法执行本地命令。
+- **样式 token 扩充**：新增 `--ghtk-gap` / `--ghtk-gap-lg` / `--ghtk-fs-label` / `--ghtk-fs-small` / `--ghtk-fs-mono`，消除散落的 6/7/9/13px 与 10/10.5/11/11.5px 混用。
+- **间距改用 flex gap**：加速面板两个子区块改用 `display: flex; flex-direction: column; gap`，子元素不再自带 `margin-bottom`（避免叠加导致视觉粘连）；说明文字加虚线上边框与 10px 内边距，与操作区分层。
+- **修正蓝色按钮超标**：加速地址的「保存」按钮由 primary 改为次要样式，一屏只保留「加速打开」一个蓝色主按钮。
 
 #### v2.6.0 接口缓存持久化 + about 固定区块 + 弹窗跟随
 
