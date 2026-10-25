@@ -1,6 +1,7 @@
 import type { Binding, PageContext, Plugin, PluginContext } from '../types';
 import { Modal } from '../core/modal';
-import { checkHasForked, fetchRepoInfo, getCurrentUser } from '../core/github-api';
+import { checkHasForked, fetchRepoAbout, fetchRepoInfo, getCurrentUser } from '../core/github-api';
+import type { RepoAbout } from '../core/github-api';
 
 const BIND_STORAGE_KEY = 'upstream-downstream-bindings';
 
@@ -36,6 +37,128 @@ interface ViewState {
   status: UpstreamStatus;
   /** 添加视图中用户输入的仓库 */
   draft: string;
+  /** 已加载的上游 about（按 owner/repo 小写缓存） */
+  about: Map<string, RepoAbout | null>;
+  /** about 描述是否展开 */
+  aboutExpanded: boolean;
+}
+
+/** 数字紧凑格式：1234 → 1.2k */
+function compactNum(n: number): string {
+  if (n < 1000) return String(n);
+  if (n < 10000) return (n / 1000).toFixed(1).replace(/\.0$/, '') + 'k';
+  return Math.round(n / 1000) + 'k';
+}
+
+/** 语言 → 圆点颜色（GitHub 语言配色节选） */
+const LANG_COLORS: Record<string, string> = {
+  JavaScript: '#f1e05a',
+  TypeScript: '#3178c6',
+  Python: '#3572A5',
+  Go: '#00ADD8',
+  Rust: '#dea584',
+  Java: '#b07219',
+  'C++': '#f34b7d',
+  C: '#555555',
+  'C#': '#178600',
+  Ruby: '#701516',
+  PHP: '#4F5D95',
+  Swift: '#F05138',
+  Kotlin: '#A97BFF',
+  Dart: '#00B4AB',
+  Shell: '#89e051',
+  HTML: '#e34c26',
+  CSS: '#563d7c',
+  Vue: '#41b883',
+  SCSS: '#c6538c',
+  Lua: '#000080',
+  Zig: '#ec915c',
+};
+
+/**
+ * 渲染上游 about 区块。
+ * 描述最多 3 行（超出省略），可展开；topics 也限制高度，避免撑破面板。
+ */
+function renderAbout(about: RepoAbout | null | undefined, full: string, expanded: boolean): string {
+  if (about === undefined) {
+    // 尚未加载
+    return `
+      <div class="ghtk-about">
+        <div class="ghtk-about-desc muted">正在加载仓库简介…</div>
+      </div>
+    `;
+  }
+  if (about === null) {
+    return '';
+  }
+
+  const desc = about.description?.trim() || '';
+  // 粗估是否需要「展开」：超过 3 行（约 70 个中文字符 / 140 个西文字符）
+  const needToggle = desc.length > 70 || desc.split('\n').length > 3;
+  const descHtml = desc
+    ? `<div class="ghtk-about-desc">${escapeHtml(desc)}</div>
+       ${needToggle ? `<button class="ghtk-about-more" id="ghtk-about-more" type="button">${expanded ? '收起' : '展开全部'}</button>` : ''}`
+    : `<div class="ghtk-about-desc muted">暂无简介</div>`;
+
+  const metaItems: string[] = [];
+  if (about.language) {
+    const color = LANG_COLORS[about.language] || '#8b949e';
+    metaItems.push(
+      `<span class="item"><span class="ghtk-lang-dot" style="background:${color}"></span><span>${escapeHtml(about.language)}</span></span>`
+    );
+  }
+  if (about.stars) {
+    metaItems.push(
+      `<span class="item"><svg viewBox="0 0 16 16"><path d="M8 .25a.75.75 0 0 1 .673.418l1.882 3.815 4.21.612a.75.75 0 0 1 .416 1.279l-3.046 2.97.719 4.192a.751.751 0 0 1-1.088.791L8 12.347l-3.766 1.98a.75.75 0 0 1-1.088-.79l.72-4.194L.818 6.374a.75.75 0 0 1 .416-1.28l4.21-.611L7.327.668A.75.75 0 0 1 8 .25Z"/></svg><span>${compactNum(about.stars)}</span></span>`
+    );
+  }
+  if (about.forks) {
+    metaItems.push(
+      `<span class="item"><svg viewBox="0 0 16 16"><path d="M5 5.372v.878c0 .414.336.75.75.75h4.5a.75.75 0 0 0 .75-.75v-.878a2.25 2.25 0 1 1 1.5 0v.878a2.25 2.25 0 0 1-2.25 2.25h-1.5v2.128a2.251 2.251 0 1 1-1.5 0V8.5h-1.5A2.25 2.25 0 0 1 3.5 6.25v-.878a2.25 2.25 0 1 1 1.5 0ZM5 3.25a.75.75 0 1 0-1.5 0 .75.75 0 0 0 1.5 0Zm6.75.75a.75.75 0 1 0 0-1.5.75.75 0 0 0 0 1.5Zm-3 8.75a.75.75 0 1 0-1.5 0 .75.75 0 0 0 1.5 0Z"/></svg><span>${compactNum(about.forks)}</span></span>`
+    );
+  }
+  if (about.license) {
+    metaItems.push(
+      `<span class="item"><svg viewBox="0 0 16 16"><path d="M8.75.75V2h.985c.304 0 .603.08.867.231l1.29.736c.038.022.08.033.124.033h2.234a.75.75 0 0 1 0 1.5h-.427l2.111 4.692a.75.75 0 0 1-.154.838l-.53-.53.529.531-.001.002-.002.002-.006.006-.006.005-.01.01-.045.04c-.21.176-.441.327-.686.45C14.556 10.78 13.88 11 13 11a4.498 4.498 0 0 1-2.023-.454 3.544 3.544 0 0 1-.686-.45l-.045-.04-.016-.015-.002-.002-.001-.002.528-.53-.528.53-.154-.837 2.11-4.692h-.428a.75.75 0 0 1 0-1.5h2.234a.25.25 0 0 0 .124-.033l1.29-.735c.264-.151.563-.231.867-.231h.985V.75a.75.75 0 0 1 1.5 0Zm-1.5 0a.75.75 0 0 1 1.5 0Z"/></svg><span>${escapeHtml(about.license)}</span></span>`
+    );
+  }
+  if (about.homepage) {
+    const home = about.homepage.replace(/^https?:\/\//, '');
+    metaItems.push(
+      `<span class="item"><svg viewBox="0 0 16 16"><path d="M3.75 2h3.5a.75.75 0 0 1 0 1.5h-3.5a.25.25 0 0 0-.25.25v8.5c0 .138.112.25.25.25h8.5a.25.25 0 0 0 .25-.25v-3.5a.75.75 0 0 1 1.5 0v3.5A1.75 1.75 0 0 1 12.25 14h-8.5A1.75 1.75 0 0 1 2 12.25v-8.5C2 2.784 2.784 2 3.75 2Zm6.854-1h4.146a.25.25 0 0 1 .25.25v4.146a.25.25 0 0 1-.427.177L13.03 4.03 9.28 7.78a.75.75 0 0 1-1.06-1.06l3.75-3.75-1.543-1.543A.25.25 0 0 1 10.604 1Z"/></svg><a href="${escapeHtml(about.homepage)}" target="_blank" rel="noreferrer" title="${escapeHtml(about.homepage)}">${escapeHtml(home)}</a></span>`
+    );
+  }
+  if (about.archived) {
+    metaItems.push(`<span class="item" style="color:#9a6700">已归档</span>`);
+  }
+
+  const topics = about.topics.length
+    ? `<div class="ghtk-topics">${about.topics
+        .slice(0, expanded ? about.topics.length : 6)
+        .map((t) => `<span class="ghtk-topic">${escapeHtml(t)}</span>`)
+        .join('')}${
+        !expanded && about.topics.length > 6
+          ? `<span class="ghtk-topic">+${about.topics.length - 6}</span>`
+          : ''
+      }</div>`
+    : '';
+
+  return `
+    <div class="ghtk-about ${expanded ? 'expanded' : ''}">
+      ${descHtml}
+      ${metaItems.length ? `<div class="ghtk-about-meta">${metaItems.join('')}</div>` : ''}
+      ${topics}
+    </div>
+  `;
+}
+
+function escapeHtml(s: string): string {
+  return s
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
 }
 
 export const UpstreamBindPlugin: Plugin = {
@@ -79,6 +202,8 @@ export const UpstreamBindPlugin: Plugin = {
         query: '',
         status: { text: '' },
         draft: '',
+        about: new Map(),
+        aboutExpanded: false,
       };
 
       const railList = root.querySelector<HTMLElement>('#ghtk-rail-list');
@@ -194,14 +319,18 @@ export const UpstreamBindPlugin: Plugin = {
 
         const downs = b.downstreams || [];
         const full = `${b.owner}/${b.repo}`;
+        const about = state.about.get(full.toLowerCase());
+        const aboutHtml = renderAbout(about, full, state.aboutExpanded);
+        const ownerText = `${b.owner}`;
+
         const rows = downs.length
           ? downs
               .map(
                 (d) => `
             <div class="ghtk-drow">
               <span class="ghtk-drow-dash">└</span>
-              <a href="https://github.com/${d}" target="_blank" title="${d}">${d}</a>
-              <button class="ghtk-icon-btn ghtk-drow-rm" data-remove="${d}" type="button" title="移除">${ICONS.del}</button>
+              <a href="https://github.com/${d}" data-ghtk-nav title="打开下游 ${d}">${d}</a>
+              <button class="ghtk-icon-btn ghtk-drow-rm" data-remove="${d}" type="button" title="移除下游">${ICONS.del}</button>
             </div>
           `
               )
@@ -221,10 +350,16 @@ export const UpstreamBindPlugin: Plugin = {
               }
             </div>
             <div class="ghtk-detail-sub">
-              <span>页面 <b><code>${page.type}</code></b></span>
-              ${currentUser ? `<span>用户 <b>${currentUser}</b></span>` : '<span style="color:#cf222e">未登录</span>'}
+              <span>上游所有者 <b>${ownerText}</b></span>
+              <span>${
+                currentUser
+                  ? `当前用户 <b>${currentUser}</b>`
+                  : '<span style="color:#cf222e">未登录</span>'
+              }</span>
             </div>
           </div>
+
+          ${aboutHtml}
 
           <div class="ghtk-detail-body">
             <div class="ghtk-sec-label">下游 · ${downs.length}</div>
@@ -234,7 +369,7 @@ export const UpstreamBindPlugin: Plugin = {
           <div class="ghtk-detail-foot">
             <div class="ghtk-foot-main">
               <button class="ghtk-btn primary" id="ghtk-auto-bind" type="button">绑定下游</button>
-              <a class="ghtk-btn" href="https://github.com/${full}" target="_blank">打开上游</a>
+              <a class="ghtk-btn" href="https://github.com/${full}" data-ghtk-nav>打开上游</a>
             </div>
             <div class="ghtk-foot-icons">
               <button class="ghtk-icon-btn" id="ghtk-manual-bind" type="button" title="手动绑定下游">${ICONS.plus}</button>
@@ -245,10 +380,24 @@ export const UpstreamBindPlugin: Plugin = {
           </div>
         `;
 
-        // 移除下游
+        // about 描述展开/收起
+        detail.querySelector('#ghtk-about-more')?.addEventListener('click', () => {
+          state.aboutExpanded = !state.aboutExpanded;
+          renderDetail();
+        });
+
+        // 移除下游（二次确认）
         detail.querySelectorAll<HTMLElement>('[data-remove]').forEach((btn) => {
-          btn.addEventListener('click', () => {
+          btn.addEventListener('click', async () => {
             const down = btn.dataset.remove!;
+            const ok = await Modal.show({
+              title: '移除下游',
+              content: `从 <b>${full}</b> 的下游中移除 <b>${down}</b>？`,
+              confirmText: '移除',
+              cancelText: '取消',
+              danger: true,
+            });
+            if (!ok) return;
             const latest = loadBindings();
             if (!latest[state.selected]) return;
             latest[state.selected].downstreams = (latest[state.selected].downstreams || []).filter(
@@ -332,10 +481,11 @@ export const UpstreamBindPlugin: Plugin = {
         // 删除整条绑定
         detail.querySelector('#ghtk-remove-up')?.addEventListener('click', async () => {
           const ok = await Modal.show({
-            title: '删除',
-            content: `删除 <b>${full}</b>？`,
+            title: '删除绑定',
+            content: `删除上游 <b>${full}</b> 及其全部下游记录？`,
             confirmText: '删除',
             cancelText: '取消',
+            danger: true,
           });
           if (!ok) return;
           const latest = loadBindings();
@@ -345,6 +495,23 @@ export const UpstreamBindPlugin: Plugin = {
           renderRail();
           renderDetail();
           ctx.ui.toast('已删除');
+        });
+
+        // 按需加载 about（缓存命中则跳过）
+        loadAbout(b);
+      };
+
+      /** 拉取并缓存 about，然后局部刷新详情 */
+      const loadAbout = (b: Binding) => {
+        const key = `${b.owner}/${b.repo}`.toLowerCase();
+        if (state.about.has(key)) return;
+
+        fetchRepoAbout(b.owner, b.repo).then((data) => {
+          state.about.set(key, data);
+          // 仅当当前选中的还是这一条时才刷新，避免切走后又闪回
+          const cur = loadBindings()[state.selected];
+          if (!cur) return;
+          if (`${cur.owner}/${cur.repo}`.toLowerCase() === key) renderDetail();
         });
       };
 
@@ -389,7 +556,7 @@ export const UpstreamBindPlugin: Plugin = {
                   <div class="ghtk-detect-repo" title="${st.fullName}">${st.fullName}</div>
                   <div class="ghtk-detect-actions">
                     <button class="ghtk-btn primary" id="ghtk-oneclick-bind" type="button">绑定为下游</button>
-                    <a class="ghtk-btn" href="https://github.com/${st.fullName}" target="_blank">打开</a>
+                    <a class="ghtk-btn" href="https://github.com/${st.fullName}" data-ghtk-nav>打开</a>
                   </div>
                 </div>
               `

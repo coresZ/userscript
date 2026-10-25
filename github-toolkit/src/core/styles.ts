@@ -392,6 +392,126 @@ const CSS = `
       border-bottom: 1px solid var(--borderColor-muted, #d8dee4) !important;
       flex-shrink: 0 !important;
     }
+
+    /* ===== 上游 about 区块 ===== */
+    .ghtk-about {
+      padding: 10px 14px !important;
+      border-bottom: 1px solid var(--borderColor-muted, #d8dee4) !important;
+      /* 可收缩：展开过长时自身滚动，不挤压下游列表 */
+      flex-shrink: 1 !important;
+      min-height: 0 !important;
+      max-height: 42% !important;
+      overflow-y: auto !important;
+    }
+    .ghtk-about::-webkit-scrollbar { width: 6px !important; }
+    .ghtk-about::-webkit-scrollbar-thumb {
+      background: var(--borderColor-default, #d0d7de) !important;
+      border-radius: 3px !important;
+    }
+    .ghtk-about-desc {
+      font-size: 11.5px !important;
+      line-height: 1.5 !important;
+      color: var(--fgColor-default, #1f2328) !important;
+      margin-bottom: 8px !important;
+      /* 最多 3 行，超出省略 */
+      display: -webkit-box !important;
+      -webkit-line-clamp: 3 !important;
+      -webkit-box-orient: vertical !important;
+      overflow: hidden !important;
+      text-overflow: ellipsis !important;
+      word-break: break-word !important;
+      overflow-wrap: anywhere !important;
+    }
+    .ghtk-about-desc.muted {
+      color: var(--fgColor-muted, #59636e) !important;
+      font-style: italic !important;
+    }
+    /* 展开态取消行数限制 */
+    .ghtk-about.expanded .ghtk-about-desc {
+      display: block !important;
+      -webkit-line-clamp: unset !important;
+      overflow: visible !important;
+    }
+    .ghtk-about-more {
+      display: inline-block !important;
+      margin: -4px 0 8px !important;
+      padding: 0 !important;
+      border: none !important;
+      background: none !important;
+      color: #0969da !important;
+      font-size: 10.5px !important;
+      cursor: pointer !important;
+      font-family: inherit !important;
+    }
+    .ghtk-about-more:hover { text-decoration: underline !important; }
+
+    .ghtk-about-meta {
+      display: flex !important;
+      flex-wrap: wrap !important;
+      gap: 4px 10px !important;
+      font-size: 10.5px !important;
+      color: var(--fgColor-muted, #59636e) !important;
+      align-items: center !important;
+    }
+    .ghtk-about-meta .item {
+      display: inline-flex !important;
+      align-items: center !important;
+      gap: 4px !important;
+      min-width: 0 !important;
+      max-width: 100% !important;
+    }
+    .ghtk-about-meta .item span {
+      overflow: hidden !important;
+      text-overflow: ellipsis !important;
+      white-space: nowrap !important;
+      max-width: 120px !important;
+    }
+    .ghtk-about-meta svg {
+      width: 12px !important;
+      height: 12px !important;
+      fill: var(--fgColor-muted, #59636e) !important;
+      flex-shrink: 0 !important;
+    }
+    .ghtk-about-meta a {
+      color: #0969da !important;
+      text-decoration: none !important;
+      overflow: hidden !important;
+      text-overflow: ellipsis !important;
+      white-space: nowrap !important;
+      max-width: 130px !important;
+      display: inline-block !important;
+    }
+    .ghtk-about-meta a:hover { text-decoration: underline !important; }
+
+    .ghtk-lang-dot {
+      width: 8px !important;
+      height: 8px !important;
+      border-radius: 50% !important;
+      background: #0969da !important;
+      flex-shrink: 0 !important;
+    }
+    .ghtk-topics {
+      display: flex !important;
+      flex-wrap: wrap !important;
+      gap: 4px !important;
+      margin-top: 8px !important;
+      max-height: 52px !important;
+      overflow: hidden !important;
+    }
+    .ghtk-about.expanded .ghtk-topics {
+      max-height: none !important;
+    }
+    .ghtk-topic {
+      font-size: 9.5px !important;
+      font-weight: 500 !important;
+      color: #0550ae !important;
+      background: #ddf4ff !important;
+      border: 1px solid #b6e3ff !important;
+      border-radius: 20px !important;
+      padding: 1px 7px !important;
+      line-height: 1.6 !important;
+      white-space: nowrap !important;
+    }
     .ghtk-detail-title {
       display: flex !important;
       align-items: center !important;
@@ -706,6 +826,13 @@ const CSS = `
       background: #fff !important;
     }
     .ghtk-btn.danger:hover { background: #ffebe9 !important; }
+    /* 危险实心按钮：用于删除类二次确认 */
+    .ghtk-btn.danger-solid {
+      background: #cf222e !important;
+      color: #fff !important;
+      border-color: #cf222e !important;
+    }
+    .ghtk-btn.danger-solid:hover { background: #a40e26 !important; }
 
     /* 同排按钮等宽 */
     .ghtk-btn-row {
@@ -752,6 +879,23 @@ const CSS = `
       box-shadow: 0 16px 48px rgba(0,0,0,.25) !important;
       overflow: hidden !important;
       animation: ghtk-scale .15s ease !important;
+    }
+    /* 跟随面板：遮罩只盖住面板区域，内边距收窄避免溢出 */
+    .ghtk-modal-mask.in-panel {
+      background: rgba(31,35,40,.28) !important;
+      padding: 12px !important;
+      animation: ghtk-fade .12s ease !important;
+    }
+    .ghtk-modal-mask.in-panel .ghtk-modal {
+      width: 100% !important;
+      max-width: 340px !important;
+      max-height: 100% !important;
+      display: flex !important;
+      flex-direction: column !important;
+    }
+    .ghtk-modal-mask.in-panel .ghtk-modal-body {
+      overflow-y: auto !important;
+      min-height: 0 !important;
     }
     @keyframes ghtk-scale {
       from { opacity: 0; transform: scale(.95); }

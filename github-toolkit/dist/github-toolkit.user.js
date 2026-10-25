@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         GitHub Toolkit
 // @namespace    github-toolkit
-// @version      2.5.2
+// @version      2.5.3
 // @author       Cores
 // @description  高内聚低耦合的 GitHub 模块化工具台（图标操作 + 复制上游链接）
 // @license      MIT
@@ -451,6 +451,126 @@
       border-bottom: 1px solid var(--borderColor-muted, #d8dee4) !important;
       flex-shrink: 0 !important;
     }
+
+    /* ===== 上游 about 区块 ===== */
+    .ghtk-about {
+      padding: 10px 14px !important;
+      border-bottom: 1px solid var(--borderColor-muted, #d8dee4) !important;
+      /* 可收缩：展开过长时自身滚动，不挤压下游列表 */
+      flex-shrink: 1 !important;
+      min-height: 0 !important;
+      max-height: 42% !important;
+      overflow-y: auto !important;
+    }
+    .ghtk-about::-webkit-scrollbar { width: 6px !important; }
+    .ghtk-about::-webkit-scrollbar-thumb {
+      background: var(--borderColor-default, #d0d7de) !important;
+      border-radius: 3px !important;
+    }
+    .ghtk-about-desc {
+      font-size: 11.5px !important;
+      line-height: 1.5 !important;
+      color: var(--fgColor-default, #1f2328) !important;
+      margin-bottom: 8px !important;
+      /* 最多 3 行，超出省略 */
+      display: -webkit-box !important;
+      -webkit-line-clamp: 3 !important;
+      -webkit-box-orient: vertical !important;
+      overflow: hidden !important;
+      text-overflow: ellipsis !important;
+      word-break: break-word !important;
+      overflow-wrap: anywhere !important;
+    }
+    .ghtk-about-desc.muted {
+      color: var(--fgColor-muted, #59636e) !important;
+      font-style: italic !important;
+    }
+    /* 展开态取消行数限制 */
+    .ghtk-about.expanded .ghtk-about-desc {
+      display: block !important;
+      -webkit-line-clamp: unset !important;
+      overflow: visible !important;
+    }
+    .ghtk-about-more {
+      display: inline-block !important;
+      margin: -4px 0 8px !important;
+      padding: 0 !important;
+      border: none !important;
+      background: none !important;
+      color: #0969da !important;
+      font-size: 10.5px !important;
+      cursor: pointer !important;
+      font-family: inherit !important;
+    }
+    .ghtk-about-more:hover { text-decoration: underline !important; }
+
+    .ghtk-about-meta {
+      display: flex !important;
+      flex-wrap: wrap !important;
+      gap: 4px 10px !important;
+      font-size: 10.5px !important;
+      color: var(--fgColor-muted, #59636e) !important;
+      align-items: center !important;
+    }
+    .ghtk-about-meta .item {
+      display: inline-flex !important;
+      align-items: center !important;
+      gap: 4px !important;
+      min-width: 0 !important;
+      max-width: 100% !important;
+    }
+    .ghtk-about-meta .item span {
+      overflow: hidden !important;
+      text-overflow: ellipsis !important;
+      white-space: nowrap !important;
+      max-width: 120px !important;
+    }
+    .ghtk-about-meta svg {
+      width: 12px !important;
+      height: 12px !important;
+      fill: var(--fgColor-muted, #59636e) !important;
+      flex-shrink: 0 !important;
+    }
+    .ghtk-about-meta a {
+      color: #0969da !important;
+      text-decoration: none !important;
+      overflow: hidden !important;
+      text-overflow: ellipsis !important;
+      white-space: nowrap !important;
+      max-width: 130px !important;
+      display: inline-block !important;
+    }
+    .ghtk-about-meta a:hover { text-decoration: underline !important; }
+
+    .ghtk-lang-dot {
+      width: 8px !important;
+      height: 8px !important;
+      border-radius: 50% !important;
+      background: #0969da !important;
+      flex-shrink: 0 !important;
+    }
+    .ghtk-topics {
+      display: flex !important;
+      flex-wrap: wrap !important;
+      gap: 4px !important;
+      margin-top: 8px !important;
+      max-height: 52px !important;
+      overflow: hidden !important;
+    }
+    .ghtk-about.expanded .ghtk-topics {
+      max-height: none !important;
+    }
+    .ghtk-topic {
+      font-size: 9.5px !important;
+      font-weight: 500 !important;
+      color: #0550ae !important;
+      background: #ddf4ff !important;
+      border: 1px solid #b6e3ff !important;
+      border-radius: 20px !important;
+      padding: 1px 7px !important;
+      line-height: 1.6 !important;
+      white-space: nowrap !important;
+    }
     .ghtk-detail-title {
       display: flex !important;
       align-items: center !important;
@@ -765,6 +885,13 @@
       background: #fff !important;
     }
     .ghtk-btn.danger:hover { background: #ffebe9 !important; }
+    /* 危险实心按钮：用于删除类二次确认 */
+    .ghtk-btn.danger-solid {
+      background: #cf222e !important;
+      color: #fff !important;
+      border-color: #cf222e !important;
+    }
+    .ghtk-btn.danger-solid:hover { background: #a40e26 !important; }
 
     /* 同排按钮等宽 */
     .ghtk-btn-row {
@@ -811,6 +938,23 @@
       box-shadow: 0 16px 48px rgba(0,0,0,.25) !important;
       overflow: hidden !important;
       animation: ghtk-scale .15s ease !important;
+    }
+    /* 跟随面板：遮罩只盖住面板区域，内边距收窄避免溢出 */
+    .ghtk-modal-mask.in-panel {
+      background: rgba(31,35,40,.28) !important;
+      padding: 12px !important;
+      animation: ghtk-fade .12s ease !important;
+    }
+    .ghtk-modal-mask.in-panel .ghtk-modal {
+      width: 100% !important;
+      max-width: 340px !important;
+      max-height: 100% !important;
+      display: flex !important;
+      flex-direction: column !important;
+    }
+    .ghtk-modal-mask.in-panel .ghtk-modal-body {
+      overflow-y: auto !important;
+      min-height: 0 !important;
     }
     @keyframes ghtk-scale {
       from { opacity: 0; transform: scale(.95); }
@@ -1328,6 +1472,36 @@
       return this.enabled.has(id);
     }
   }
+  function navigateTo(url) {
+    const w = window;
+    const turbo = w.Turbo?.visit ? w.Turbo : w.turbo?.visit ? w.turbo : null;
+    if (turbo?.visit) {
+      turbo.visit(url);
+      return;
+    }
+    window.location.href = url;
+  }
+  function bindSoftNav() {
+    if (softNavBound) return;
+    softNavBound = true;
+    document.addEventListener(
+      "click",
+      (ev) => {
+        const e = ev;
+        const target = e.target;
+        const link = target?.closest?.("a[data-ghtk-nav]");
+        if (!link) return;
+        if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+        const href = link.getAttribute("href");
+        if (!href) return;
+        e.preventDefault();
+        e.stopPropagation();
+        navigateTo(link.href);
+      },
+      true
+    );
+  }
+  let softNavBound = false;
   const Modal = {
     show({
       title = "提示",
@@ -1336,14 +1510,15 @@
       inputValue = "",
       placeholder = "",
       confirmText = "确定",
-      cancelText = "取消"
+      cancelText = "取消",
+      danger = false
     } = {}) {
       return new Promise((resolve) => {
         document.querySelectorAll(".ghtk-modal-mask").forEach((el) => el.remove());
         const mask = document.createElement("div");
         mask.className = "ghtk-modal-mask";
         mask.innerHTML = `
-        <div class="ghtk-modal">
+        <div class="ghtk-modal" role="dialog" aria-modal="true">
           <div class="ghtk-modal-header">
             <span class="ghtk-modal-title">${title}</span>
             <button class="ghtk-modal-close" type="button">✕</button>
@@ -1354,12 +1529,23 @@
           </div>
           <div class="ghtk-modal-footer">
             <button class="ghtk-btn" data-action="cancel" type="button">${cancelText}</button>
-            <button class="ghtk-btn primary" data-action="confirm" type="button">${confirmText}</button>
+            <button class="ghtk-btn ${danger ? "danger-solid" : "primary"}" data-action="confirm" type="button">${confirmText}</button>
           </div>
         </div>
       `;
         getRoot().appendChild(mask);
         injectGlobalStyles();
+        const panel = document.querySelector(".ghtk-panel");
+        if (panel) {
+          const rect = panel.getBoundingClientRect();
+          mask.classList.add("in-panel");
+          mask.style.position = "fixed";
+          mask.style.left = rect.left + "px";
+          mask.style.top = rect.top + "px";
+          mask.style.width = rect.width + "px";
+          mask.style.height = rect.height + "px";
+          mask.style.borderRadius = "14px";
+        }
         const input = mask.querySelector(".ghtk-modal-input");
         if (input) {
           setTimeout(() => {
@@ -1370,8 +1556,19 @@
         const close = (result) => {
           mask.remove();
           document.removeEventListener("keydown", onKey);
+          window.removeEventListener("resize", syncToPanel);
           resolve(result);
         };
+        const syncToPanel = () => {
+          const p = document.querySelector(".ghtk-panel");
+          if (!p || !mask.classList.contains("in-panel")) return;
+          const r = p.getBoundingClientRect();
+          mask.style.left = r.left + "px";
+          mask.style.top = r.top + "px";
+          mask.style.width = r.width + "px";
+          mask.style.height = r.height + "px";
+        };
+        window.addEventListener("resize", syncToPanel, { passive: true });
         mask.querySelector(".ghtk-modal-close").addEventListener("click", () => close(null));
         mask.querySelector('[data-action="cancel"]').addEventListener("click", () => close(null));
         mask.querySelector('[data-action="confirm"]').addEventListener("click", () => {
@@ -1446,6 +1643,59 @@
   }
   const forkCache = /* @__PURE__ */ new Map();
   const FORK_CACHE_TTL = 10 * 60 * 1e3;
+  const aboutCache = /* @__PURE__ */ new Map();
+  const ABOUT_CACHE_TTL = 10 * 60 * 1e3;
+  function fetchRepoAbout(owner, repo) {
+    const key = `${owner}/${repo}`.toLowerCase();
+    const cached = aboutCache.get(key);
+    if (cached && Date.now() - cached.at < ABOUT_CACHE_TTL) {
+      return Promise.resolve(cached.data);
+    }
+    return new Promise((resolve) => {
+      const done = (data) => {
+        aboutCache.set(key, { data, at: Date.now() });
+        resolve(data);
+      };
+      try {
+        GM_xmlhttpRequest({
+          method: "GET",
+          url: `https://api.github.com/repos/${owner}/${repo}`,
+          headers: API_HEADERS,
+          onload: (res) => {
+            if (res.status !== 200) {
+              done(null);
+              return;
+            }
+            try {
+              const d = JSON.parse(res.responseText);
+              done({
+                full_name: d.full_name,
+                owner: d.owner?.login ?? owner,
+                repo: d.name ?? repo,
+                description: d.description ?? null,
+                homepage: d.homepage || null,
+                language: d.language ?? null,
+                license: d.license?.spdx_id ?? d.license?.name ?? null,
+                stars: d.stargazers_count ?? 0,
+                forks: d.forks_count ?? 0,
+                openIssues: d.open_issues_count ?? 0,
+                topics: Array.isArray(d.topics) ? d.topics : [],
+                archived: !!d.archived,
+                updatedAt: d.pushed_at ?? d.updated_at ?? null,
+                ownerAvatar: d.owner?.avatar_url ?? null
+              });
+            } catch {
+              done(null);
+            }
+          },
+          onerror: () => done(null),
+          ontimeout: () => done(null)
+        });
+      } catch {
+        done(null);
+      }
+    });
+  }
   function checkHasForked(currentUser, owner, repo) {
     const forkUrl = `https://github.com/${currentUser}/${repo}`;
     const cacheKey = `${currentUser}/${owner}/${repo}`.toLowerCase();
@@ -1497,6 +1747,92 @@
     copy: `<svg viewBox="0 0 16 16"><path d="M0 6.75C0 5.784.784 5 1.75 5h1.5a.75.75 0 0 1 0 1.5h-1.5a.25.25 0 0 0-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 0 0 .25-.25v-1.5a.75.75 0 0 1 1.5 0v1.5A1.75 1.75 0 0 1 9.25 16h-7.5A1.75 1.75 0 0 1 0 14.25ZM5 1.75C5 .784 5.784 0 6.75 0h7.5C15.216 0 16 .784 16 1.75v7.5A1.75 1.75 0 0 1 14.25 11h-7.5A1.75 1.75 0 0 1 5 9.25Zm1.75-.25a.25.25 0 0 0-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 0 0 .25-.25v-7.5a.25.25 0 0 0-.25-.25Z"/></svg>`,
     del: `<svg viewBox="0 0 16 16"><path d="M3.72 3.72a.75.75 0 0 1 1.06 0L8 6.94l3.22-3.22a.75.75 0 1 1 1.06 1.06L9.06 8l3.22 3.22a.75.75 0 1 1-1.06 1.06L8 9.06l-3.22 3.22a.75.75 0 0 1-1.06-1.06L6.94 8 3.72 4.78a.75.75 0 0 1 0-1.06Z"/></svg>`
   };
+  function compactNum(n) {
+    if (n < 1e3) return String(n);
+    if (n < 1e4) return (n / 1e3).toFixed(1).replace(/\.0$/, "") + "k";
+    return Math.round(n / 1e3) + "k";
+  }
+  const LANG_COLORS = {
+    JavaScript: "#f1e05a",
+    TypeScript: "#3178c6",
+    Python: "#3572A5",
+    Go: "#00ADD8",
+    Rust: "#dea584",
+    Java: "#b07219",
+    "C++": "#f34b7d",
+    C: "#555555",
+    "C#": "#178600",
+    Ruby: "#701516",
+    PHP: "#4F5D95",
+    Swift: "#F05138",
+    Kotlin: "#A97BFF",
+    Dart: "#00B4AB",
+    Shell: "#89e051",
+    HTML: "#e34c26",
+    CSS: "#563d7c",
+    Vue: "#41b883",
+    SCSS: "#c6538c",
+    Lua: "#000080",
+    Zig: "#ec915c"
+  };
+  function renderAbout(about, full, expanded) {
+    if (about === void 0) {
+      return `
+      <div class="ghtk-about">
+        <div class="ghtk-about-desc muted">正在加载仓库简介…</div>
+      </div>
+    `;
+    }
+    if (about === null) {
+      return "";
+    }
+    const desc = about.description?.trim() || "";
+    const needToggle = desc.length > 70 || desc.split("\n").length > 3;
+    const descHtml = desc ? `<div class="ghtk-about-desc">${escapeHtml(desc)}</div>
+       ${needToggle ? `<button class="ghtk-about-more" id="ghtk-about-more" type="button">${expanded ? "收起" : "展开全部"}</button>` : ""}` : `<div class="ghtk-about-desc muted">暂无简介</div>`;
+    const metaItems = [];
+    if (about.language) {
+      const color = LANG_COLORS[about.language] || "#8b949e";
+      metaItems.push(
+        `<span class="item"><span class="ghtk-lang-dot" style="background:${color}"></span><span>${escapeHtml(about.language)}</span></span>`
+      );
+    }
+    if (about.stars) {
+      metaItems.push(
+        `<span class="item"><svg viewBox="0 0 16 16"><path d="M8 .25a.75.75 0 0 1 .673.418l1.882 3.815 4.21.612a.75.75 0 0 1 .416 1.279l-3.046 2.97.719 4.192a.751.751 0 0 1-1.088.791L8 12.347l-3.766 1.98a.75.75 0 0 1-1.088-.79l.72-4.194L.818 6.374a.75.75 0 0 1 .416-1.28l4.21-.611L7.327.668A.75.75 0 0 1 8 .25Z"/></svg><span>${compactNum(about.stars)}</span></span>`
+      );
+    }
+    if (about.forks) {
+      metaItems.push(
+        `<span class="item"><svg viewBox="0 0 16 16"><path d="M5 5.372v.878c0 .414.336.75.75.75h4.5a.75.75 0 0 0 .75-.75v-.878a2.25 2.25 0 1 1 1.5 0v.878a2.25 2.25 0 0 1-2.25 2.25h-1.5v2.128a2.251 2.251 0 1 1-1.5 0V8.5h-1.5A2.25 2.25 0 0 1 3.5 6.25v-.878a2.25 2.25 0 1 1 1.5 0ZM5 3.25a.75.75 0 1 0-1.5 0 .75.75 0 0 0 1.5 0Zm6.75.75a.75.75 0 1 0 0-1.5.75.75 0 0 0 0 1.5Zm-3 8.75a.75.75 0 1 0-1.5 0 .75.75 0 0 0 1.5 0Z"/></svg><span>${compactNum(about.forks)}</span></span>`
+      );
+    }
+    if (about.license) {
+      metaItems.push(
+        `<span class="item"><svg viewBox="0 0 16 16"><path d="M8.75.75V2h.985c.304 0 .603.08.867.231l1.29.736c.038.022.08.033.124.033h2.234a.75.75 0 0 1 0 1.5h-.427l2.111 4.692a.75.75 0 0 1-.154.838l-.53-.53.529.531-.001.002-.002.002-.006.006-.006.005-.01.01-.045.04c-.21.176-.441.327-.686.45C14.556 10.78 13.88 11 13 11a4.498 4.498 0 0 1-2.023-.454 3.544 3.544 0 0 1-.686-.45l-.045-.04-.016-.015-.002-.002-.001-.002.528-.53-.528.53-.154-.837 2.11-4.692h-.428a.75.75 0 0 1 0-1.5h2.234a.25.25 0 0 0 .124-.033l1.29-.735c.264-.151.563-.231.867-.231h.985V.75a.75.75 0 0 1 1.5 0Zm-1.5 0a.75.75 0 0 1 1.5 0Z"/></svg><span>${escapeHtml(about.license)}</span></span>`
+      );
+    }
+    if (about.homepage) {
+      const home = about.homepage.replace(/^https?:\/\//, "");
+      metaItems.push(
+        `<span class="item"><svg viewBox="0 0 16 16"><path d="M3.75 2h3.5a.75.75 0 0 1 0 1.5h-3.5a.25.25 0 0 0-.25.25v8.5c0 .138.112.25.25.25h8.5a.25.25 0 0 0 .25-.25v-3.5a.75.75 0 0 1 1.5 0v3.5A1.75 1.75 0 0 1 12.25 14h-8.5A1.75 1.75 0 0 1 2 12.25v-8.5C2 2.784 2.784 2 3.75 2Zm6.854-1h4.146a.25.25 0 0 1 .25.25v4.146a.25.25 0 0 1-.427.177L13.03 4.03 9.28 7.78a.75.75 0 0 1-1.06-1.06l3.75-3.75-1.543-1.543A.25.25 0 0 1 10.604 1Z"/></svg><a href="${escapeHtml(about.homepage)}" target="_blank" rel="noreferrer" title="${escapeHtml(about.homepage)}">${escapeHtml(home)}</a></span>`
+      );
+    }
+    if (about.archived) {
+      metaItems.push(`<span class="item" style="color:#9a6700">已归档</span>`);
+    }
+    const topics = about.topics.length ? `<div class="ghtk-topics">${about.topics.slice(0, expanded ? about.topics.length : 6).map((t) => `<span class="ghtk-topic">${escapeHtml(t)}</span>`).join("")}${!expanded && about.topics.length > 6 ? `<span class="ghtk-topic">+${about.topics.length - 6}</span>` : ""}</div>` : "";
+    return `
+    <div class="ghtk-about ${expanded ? "expanded" : ""}">
+      ${descHtml}
+      ${metaItems.length ? `<div class="ghtk-about-meta">${metaItems.join("")}</div>` : ""}
+      ${topics}
+    </div>
+  `;
+  }
+  function escapeHtml(s) {
+    return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+  }
   const UpstreamBindPlugin = {
     id: "upstream-bind",
     name: "上游/下游仓库绑定",
@@ -1539,7 +1875,9 @@
           addMode: false,
           query: "",
           status: { text: "" },
-          draft: ""
+          draft: "",
+          about: /* @__PURE__ */ new Map(),
+          aboutExpanded: false
         };
         const railList = root.querySelector("#ghtk-rail-list");
         const railState = root.querySelector("#ghtk-rail-state");
@@ -1626,12 +1964,15 @@
           }
           const downs = b.downstreams || [];
           const full = `${b.owner}/${b.repo}`;
+          const about = state.about.get(full.toLowerCase());
+          const aboutHtml = renderAbout(about, full, state.aboutExpanded);
+          const ownerText = `${b.owner}`;
           const rows = downs.length ? downs.map(
             (d) => `
             <div class="ghtk-drow">
               <span class="ghtk-drow-dash">└</span>
-              <a href="https://github.com/${d}" target="_blank" title="${d}">${d}</a>
-              <button class="ghtk-icon-btn ghtk-drow-rm" data-remove="${d}" type="button" title="移除">${ICONS.del}</button>
+              <a href="https://github.com/${d}" data-ghtk-nav title="打开下游 ${d}">${d}</a>
+              <button class="ghtk-icon-btn ghtk-drow-rm" data-remove="${d}" type="button" title="移除下游">${ICONS.del}</button>
             </div>
           `
           ).join("") : `<div class="ghtk-dempty">无下游</div>`;
@@ -1642,10 +1983,12 @@
               ${isUpstreamOfCurrent(b) ? '<span class="ghtk-chip">当前仓库</span>' : isDownstreamOfCurrent(b) ? '<span class="ghtk-chip">我的 Fork</span>' : ""}
             </div>
             <div class="ghtk-detail-sub">
-              <span>页面 <b><code>${page.type}</code></b></span>
-              ${currentUser ? `<span>用户 <b>${currentUser}</b></span>` : '<span style="color:#cf222e">未登录</span>'}
+              <span>上游所有者 <b>${ownerText}</b></span>
+              <span>${currentUser ? `当前用户 <b>${currentUser}</b>` : '<span style="color:#cf222e">未登录</span>'}</span>
             </div>
           </div>
+
+          ${aboutHtml}
 
           <div class="ghtk-detail-body">
             <div class="ghtk-sec-label">下游 · ${downs.length}</div>
@@ -1655,7 +1998,7 @@
           <div class="ghtk-detail-foot">
             <div class="ghtk-foot-main">
               <button class="ghtk-btn primary" id="ghtk-auto-bind" type="button">绑定下游</button>
-              <a class="ghtk-btn" href="https://github.com/${full}" target="_blank">打开上游</a>
+              <a class="ghtk-btn" href="https://github.com/${full}" data-ghtk-nav>打开上游</a>
             </div>
             <div class="ghtk-foot-icons">
               <button class="ghtk-icon-btn" id="ghtk-manual-bind" type="button" title="手动绑定下游">${ICONS.plus}</button>
@@ -1665,9 +2008,21 @@
             </div>
           </div>
         `;
+          detail.querySelector("#ghtk-about-more")?.addEventListener("click", () => {
+            state.aboutExpanded = !state.aboutExpanded;
+            renderDetail();
+          });
           detail.querySelectorAll("[data-remove]").forEach((btn) => {
-            btn.addEventListener("click", () => {
+            btn.addEventListener("click", async () => {
               const down = btn.dataset.remove;
+              const ok = await Modal.show({
+                title: "移除下游",
+                content: `从 <b>${full}</b> 的下游中移除 <b>${down}</b>？`,
+                confirmText: "移除",
+                cancelText: "取消",
+                danger: true
+              });
+              if (!ok) return;
               const latest = loadBindings();
               if (!latest[state.selected]) return;
               latest[state.selected].downstreams = (latest[state.selected].downstreams || []).filter(
@@ -1740,10 +2095,11 @@
           });
           detail.querySelector("#ghtk-remove-up")?.addEventListener("click", async () => {
             const ok = await Modal.show({
-              title: "删除",
-              content: `删除 <b>${full}</b>？`,
+              title: "删除绑定",
+              content: `删除上游 <b>${full}</b> 及其全部下游记录？`,
               confirmText: "删除",
-              cancelText: "取消"
+              cancelText: "取消",
+              danger: true
             });
             if (!ok) return;
             const latest = loadBindings();
@@ -1753,6 +2109,17 @@
             renderRail();
             renderDetail();
             ctx.ui.toast("已删除");
+          });
+          loadAbout(b);
+        };
+        const loadAbout = (b) => {
+          const key = `${b.owner}/${b.repo}`.toLowerCase();
+          if (state.about.has(key)) return;
+          fetchRepoAbout(b.owner, b.repo).then((data) => {
+            state.about.set(key, data);
+            const cur = loadBindings()[state.selected];
+            if (!cur) return;
+            if (`${cur.owner}/${cur.repo}`.toLowerCase() === key) renderDetail();
           });
         };
         const enterAddMode = () => {
@@ -1791,7 +2158,7 @@
                   <div class="ghtk-detect-repo" title="${st.fullName}">${st.fullName}</div>
                   <div class="ghtk-detect-actions">
                     <button class="ghtk-btn primary" id="ghtk-oneclick-bind" type="button">绑定为下游</button>
-                    <a class="ghtk-btn" href="https://github.com/${st.fullName}" target="_blank">打开</a>
+                    <a class="ghtk-btn" href="https://github.com/${st.fullName}" data-ghtk-nav>打开</a>
                   </div>
                 </div>
               ` : detected && alreadyBound ? `<div class="ghtk-note">当前仓库已绑定上游 ${st.fullName}</div>` : st.text === "检测失败" ? `<div class="ghtk-note">无法获取仓库信息</div>` : st.text === "无上游" ? `<div class="ghtk-note">当前仓库不是 Fork，没有上游</div>` : ""}
@@ -1987,7 +2354,7 @@
   }
   const builtinPlugins = [UpstreamBindPlugin, AccelPlugin];
   const DEFAULT_ENABLED = ["upstream-bind", "github-accel"];
-  const TOOLKIT_VERSION = "2.5.2";
+  const TOOLKIT_VERSION = "2.5.3";
   const eventBus = new EventBus();
   const dom = new DOMHelper();
   const ui = new UIManager();
@@ -2003,6 +2370,7 @@
   })();
   eventBus.on("page:change", (page) => {
     pluginManager.onPageChange(page);
+    if (ui.panel) renderPanel();
   });
   function renderPanel() {
     try {
@@ -2098,12 +2466,23 @@
     }
   };
   GM_registerMenuCommand("打开 GitHub Toolkit 面板", renderPanel);
+  function ensureFab() {
+    if (!document.getElementById("ghtk-root")?.querySelector(".ghtk-fab")) {
+      ui.createFab();
+    }
+  }
   function init() {
     if (!document.body) {
       setTimeout(init, 100);
       return;
     }
     ui.createFab();
+    bindSoftNav();
+    ["turbo:load", "turbo:render", "pjax:end", "soft-nav:end"].forEach((evt) => {
+      document.addEventListener(evt, () => {
+        ensureFab();
+      });
+    });
     Logger.log(`GitHub Toolkit v${TOOLKIT_VERSION} 已启动（图标操作 + 复制链接）`);
   }
   init();

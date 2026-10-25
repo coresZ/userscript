@@ -16,19 +16,17 @@
 
 ## 功能插件
 
-- **跳转到我的 Fork** — 别人仓库页自动检测已 Fork，在仓库操作区注入一个与原生一致的 fork 图标下拉入口
-
-> 说明：v1.3.0 起移除了「代码复制按钮」「仓库快捷信息」「复制标题+链接」三个插件（GitHub 原生已提供同类能力），仅保留 Fork 跳转。
+- **上下游仓库绑定** — 自动检测当前仓库上游，维护「上游 → 下游 fork」绑定关系；左栏导航 + 右栏详情，支持一键绑定、手动绑定、打开/复制上游、移除下游
+- **GitHub 加速** — 用自定义加速服务地址打开当前仓库，支持自定义服务地址
 
 ## 入口与界面
 
-- 仓库页：仓库头操作区里的原生图标按钮（sliders octicon），点击展开设置面板
-- 非仓库页：顶栏用户区同一图标
-- 兜底：Tampermonkey 菜单「打开 GitHub Toolkit 面板」
-- Fork 入口为纯图标下拉（避免文字撑破按钮），菜单含「打开我的 Fork」与「对比上游变更」
-- 所有浮层（面板、下拉）共用 `position.ts` 的锚定规则：右对齐触发按钮、下方展开，空间不足自动翻上/贴边；移动端面板贴底全宽；`Esc` 或点击外部关闭
-- 面板与 Fork 菜单互斥，不会同时出现
-- 所有页面内按钮均由 `src/core/native-button.ts` 整颗克隆页面真实按钮生成，与 GitHub 原生外观保持一致
+- 右下角可拖拽悬浮球（位置持久化），点击开关面板
+- 兜底：油猴菜单「打开 GitHub Toolkit 面板」
+- 面板为 400×560 双栏布局：左栏上游导航（选中项浅蓝底 + 蓝竖条），右栏详情（about / 下游列表 / 底部固定操作区）
+- 蓝色主按钮全屏唯一，固定在右栏底部
+- 站内链接走 Turbo 软导航，页面切换时面板保持打开
+- 删除类操作均二次确认，确认弹窗贴合面板区域显示
 
 ## 开发
 
@@ -47,6 +45,7 @@ npm run build
 
 ```
 dist/github-toolkit.user.js
+dist/github-toolkit.meta.js
 ```
 
 直接把该文件拖到 Tampermonkey 安装，或复制内容新建脚本。
@@ -56,22 +55,25 @@ dist/github-toolkit.user.js
 ```
 github-toolkit/
 ├── src/
-│   ├── main.ts              # 入口，组装核心 + 注册插件
-│   ├── types.ts             # Plugin / PageContext 契约
+│   ├── main.ts              # 入口，组装核心 + 注册插件 + 面板渲染
+│   ├── types.ts             # Plugin / PluginContext / PanelTab 契约
+│   ├── globals.d.ts         # GM_* 类型声明
 │   ├── core/                # 平台层（与业务无关）
 │   │   ├── event-bus.ts
 │   │   ├── storage.ts
 │   │   ├── router.ts
 │   │   ├── dom-helper.ts
-│   │   ├── ui-manager.ts
-│   │   ├── native-button.ts     # 克隆原生按钮，保证 1:1 外观
-│   │   ├── dropdown.ts          # 原生风格下拉菜单
-│   │   ├── position.ts          # 浮层锚定定位（面板/下拉共用）
-│   │   ├── plugin-manager.ts
-│   │   └── logger.ts
+│   │   ├── logger.ts
+│   │   ├── styles.ts            # 隔离样式表（#ghtk-root 作用域 + 自愈）
+│   │   ├── ui-manager.ts        # 悬浮球（可拖拽）+ 面板 + Toast
+│   │   ├── modal.ts             # 轻量确认/输入弹窗（跟随面板）
+│   │   ├── navigate.ts          # Turbo 软导航
+│   │   ├── github-api.ts        # 用户识别 / 仓库信息 / about / fork 检测
+│   │   └── plugin-manager.ts
 │   └── plugins/             # 业务插件（高内聚）
 │       ├── index.ts
-│       └── go-to-my-fork.ts
+│       ├── upstream-bind.ts     # 上下游绑定（C 版双栏主从）
+│       └── github-accel.ts      # 加速访问
 ├── vite.config.ts
 ├── tsconfig.json
 ├── package.json
@@ -81,10 +83,15 @@ github-toolkit/
 ## 新增插件
 
 1. 在 `src/plugins/` 新建文件，实现 `Plugin` 接口
-2. 在 `src/plugins/index.ts` 的 `builtinPlugins` 数组中注册
-3. 如需默认开启，加入 `DEFAULT_ENABLED`
+2. 如需面板 Tab，提供 `panelTab: { id, label, render, mount }`
+3. 在 `src/plugins/index.ts` 的 `builtinPlugins` 数组中注册
+4. 如需默认开启，加入 `DEFAULT_ENABLED`
 
 插件只通过 `PluginContext` 与核心交互，禁止互相直接调用。
+
+## 开发约定
+
+**修改代码前必读仓库根目录的 [`MODIFICATIONS.md`](../MODIFICATIONS.md)**，其中「规则」一节是强制约束，涵盖：样式隔离、控件尺寸、交互与视觉、文案、布局溢出、数据安全、架构约定、验证基线。修改后必须回填修改记录。
 
 ## License
 

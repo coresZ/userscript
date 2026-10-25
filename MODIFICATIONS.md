@@ -8,13 +8,55 @@
 
 ### 规则
 
+#### 构建与版本
 - Vite + vite-plugin-monkey 构建，产物在 `dist/`；改动源码后必须 `npm run build` 重新生成 `dist/github-toolkit.user.js` 与 `dist/github-toolkit.meta.js`。
 - 代码类改动需递增版本号：`package.json` 的 `version` + `vite.config.ts` 的 `userscript.version` + `src/main.ts` 的 `TOOLKIT_VERSION`（三处保持一致），再构建同步 `dist/`。
 - 油猴权限统一在 `vite.config.ts` 的 `userscript.grant` / `userscript.connect` 维护，插件内不再单独写 `// @grant`。
-- **禁止用 PowerShell 的 `Set-Content` / `Out-File` 改源码**：本环境 PowerShell 5.1 默认按 ANSI 写回，会把中文注释变成乱码并吞掉换行。改文件一律用编辑工具；改版本号也用编辑工具。改完可用 `node -e "console.log((require('fs').readFileSync(f,'utf8').match(/\uFFFD/g)||[]).length)"` 校验有无替换字符（应为 0）。
-- 页面内任何按钮都必须走 `src/core/native-button.ts` 的 `createNativeButton()`，禁止手写颜色/尺寸 class；该模块整颗克隆页面真实按钮，保证与 GitHub 原生外观一致。
-- **任何注入仓库头/顶栏的元素必须走 `src/core/header-host.ts` 的槽位机制**，不允许自己 `appendChild` 到 header。该模块统一「等稳定 → 等数据就绪 → 单同步块批量插入 → 共享自愈守卫」，是消除闪烁与「一个一个崩出来」的唯一正确路径。
-- 验证基线：`npx tsc --noEmit`（或 `npm run build` 内含）通过 + 构建产物中确认关键改动落地；涉及 DOM 行为改动时用 jsdom 夹具跑关键场景，并用「状态签名采样」验证是否同帧出现（采样间隔 15ms，记录 `E`/`F` 组合变化），用完删除临时目录并 `npm uninstall jsdom --no-save`。
+- **禁止用 PowerShell 的 `Set-Content` / `Out-File` 改源码**：本环境 PowerShell 5.1 默认按 ANSI 写回，会把中文注释变成乱码并吞掉换行。改文件一律用编辑工具。改完用 `node -e "console.log((require('fs').readFileSync(f,'utf8').match(/\uFFFD/g)||[]).length)"` 校验替换字符数（应为 0）。
+
+#### 样式与隔离（强制）
+- **所有 UI 类名必须 `ghtk-` 前缀，所有 id 必须 `ghtk-` 前缀**，禁止裸类名，避免与 GitHub 或其它脚本冲突。
+- **禁止写 `:root` 变量**。尺寸 token（`--ghtk-ctl-h` / `--ghtk-ctl-radius` / `--ghtk-ctl-font` / `--ghtk-ctl-gap` / `--ghtk-icon`）只能定义在 `#ghtk-root` 作用域内。
+- **所有 DOM 必须挂在 `#ghtk-root` 容器下**（`getRoot()` 返回，`display: contents` 不产生布局影响），禁止直接 `document.body.appendChild`。
+- 样式表必须通过 `injectGlobalStyles()` 注入，带固定 id（`ghtk-style-v1`）并自带 `MutationObserver` 自愈；新增样式一律写进 `src/core/styles.ts` 的 CSS 字符串，禁止在插件里散写 `<style>`。
+- 新增 UI 元素必须能承受 GitHub 全局样式侵入：依赖 `#ghtk-root *` 的 reset 段，关键属性带 `!important`。
+
+#### 控件尺寸（强制，禁止破例）
+- 所有可交互控件统一：**高度 30px、圆角 6px、字号 12px**，变量引用 `var(--ghtk-ctl-*)`，**禁止硬编码** 28/32/34px 等数值。
+- 按钮类：`.ghtk-btn`（`min-width: 76px`，同排用 `.ghtk-btn-row` 等宽 `flex: 1`）；图标按钮 `.ghtk-icon-btn`（30×30，图标 14px）。
+- 输入框类：`.ghtk-search input` / `.ghtk-field input` / `.ghtk-modal-input` 同为 30px 高。
+
+#### 交互与视觉（强制）
+- **主操作按钮（蓝色实心 `.ghtk-btn.primary`）一屏最多一个，位置必须固定**。当前设计中它固定在右栏详情底部（`.ghtk-detail-foot`），禁止新增同层级的蓝色实心按钮，禁止在不同卡片/行内各自放一个。
+- **危险操作必须二次确认，且必须用自家 `Modal` 组件**（`danger: true`，确认按钮红色实心 `.ghtk-btn.danger-solid`），禁止用 `window.confirm` / `alert`。
+- **弹窗必须跟随面板**：`Modal.show()` 自动读取 `.ghtk-panel` 的 `getBoundingClientRect()` 把遮罩定位到面板区域内（`.in-panel`），遮罩只覆盖面板、不全屏压暗；面板尺寸变化（resize）时跟随。
+- **站内链接必须走软导航**：链接加 `data-ghtk-nav` 属性，由 `src/core/navigate.ts` 的 `bindSoftNav()` 统一拦截改走 `Turbo.visit()`，禁止给站内链接加 `target="_blank"`。目的：页面切换时脚本不重载、面板保持打开。
+- **面板状态在软导航后必须保持**：`page:change` 时若 `ui.panel` 存在则重新渲染；FAB 在 `turbo:load` / `turbo:render` / `pjax:end` / `soft-nav:end` 后补回（Turbo 替换 body 会冲掉它）。
+- **悬浮球可拖拽**：拖动阈值 4px（低于此视为点击），位置持久化到 `GM_setValue('fab-position')`，拖动后不触发点击，自动约束在视口内；面板贴着悬浮球展开（优先上方，空间不足翻到下方）。
+
+#### 文案（强制）
+- **尽可能少的文字，但必要的说明文字不得删除**。判断标准：删掉后用户无法理解该控件/区域的含义，即为必要。
+- 纯解释性、可从上下文推断的文字改为 `title` 提示；状态性文字（已绑定/未绑定/检测失败等）保留但压到最短。
+- 按钮文案用动词最短形式（如「绑定」「打开」「添加」「保存」「复制」），含义不足时用 `title` 补全。
+- Toast 文案不超过 6 个字（如「已复制」「已保存」「已绑定 x」「格式错误」）。
+
+#### 布局与溢出（强制）
+- 面板内所有新增区块必须考虑溢出：文本用 `-webkit-line-clamp` 或 `text-overflow: ellipsis` 截断，长内容区自身滚动，**禁止撑破面板或挤压相邻区域**。
+- 新增区块若参与纵向 flex 布局，必须明确 `flex-shrink`，必要时设 `max-height` + `overflow-y: auto`（参考 `.ghtk-about` 的 `max-height: 42%`）。
+- 可展开的长内容必须提供「展开 / 收起」入口（参考 `.ghtk-about-more`）。
+
+#### 数据与安全
+- 所有注入到 `innerHTML` 的仓库名、描述、topics 等外部数据必须经 `escapeHtml()` 转义。
+- API 调用统一走 `src/core/github-api.ts`，带内存缓存（`fetchRepoAbout` / `fetchRepoInfo` / `checkHasForked` 均为 10 分钟 TTL），禁止在插件内直连 `GM_xmlhttpRequest`。
+
+#### 架构约定
+- 插件通过 `panelTab`（`{ id, label, render, mount }`）贡献面板 Tab，主程序只负责组装。新增插件在 `src/plugins/index.ts` 注册。
+- 插件运行时依赖只能来自注入的 `PluginContext`（`eventBus` / `storage` / `ui` / `dom` / `page` / `log`），禁止跨插件直接引用。
+
+#### 验证基线
+- `npm run build`（内含 `tsc --noEmit`）必须通过。
+- 涉及 UI 改动的，构建后检查 `dist/github-toolkit.user.js` 中确认关键字符串/css 落地。
+- 提交前确认工作区无乱码（替换字符数为 0）。
 
 ### 修改记录
 
@@ -48,6 +90,22 @@
   - 未 Fork：只留入口；切到自己仓库：Fork 按钮移除；`title` 中文未乱码。
 - **涉及文件与位置**：`src/core/header-host.ts`（新增）、`src/plugins/go-to-my-fork.ts`（重写注入路径）、`src/main.ts`（入口改槽位、删除重复自愈与重复监听）、`package.json`、`vite.config.ts`、`dist/*`
 - **副作用修复**：本次用 PowerShell `Set-Content` 批量改版本号，导致 `src/main.ts` 与 `vite.config.ts` 的中文注释被写成 ANSI 乱码并吞掉换行（`tsc` 报 `TS1490 File appears to be binary`）。两个文件已按逻辑完整重写，并用 Node 校验 `\uFFFD` 计数为 0。该坑已写入上方「规则」。
+
+#### v2.5.x 全面重写：C 版双栏主从 + 样式隔离 + 软导航（1.5.0 → 2.5.3）
+
+> 旧版（`go-to-my-fork` 插件、顶栏按钮注入、header-host 调度器）全部删除，按用户提供的新版脚本重新实现。
+
+- **架构**：保留事件总线 / 路由 / 插件管理器骨架；新增 `core/styles.ts`（隔离样式表）、`core/modal.ts`、`core/github-api.ts`、`core/navigate.ts`、`core/ui-manager.ts`（FAB + 面板 + Toast）。插件：`upstream-bind`（上下游绑定）、`github-accel`（加速访问）。插件通过 `panelTab` 契约贡献面板 Tab。
+- **删除模块**：`core/dropdown.ts`、`core/header-host.ts`、`core/native-button.ts`、`core/position.ts`、`plugins/go-to-my-fork.ts`。
+- **面板布局（经三版视觉稿对比后选定 C 版）**：左栏 152px 纯导航（上游名 + 下游数量，零按钮，选中态浅蓝底 + 2px 蓝竖条）；右栏主从详情（标题/标签/上下游用户 → about → 下游列表 → 底部固定操作区）。
+- **样式隔离**：类名/id 全部 `ghtk-` 前缀；尺寸 token 收进 `#ghtk-root` 作用域（不再写 `:root`）；样式表带 id `ghtk-style-v1` + `MutationObserver` 自愈；所有 UI 挂 `#ghtk-root`（`display: contents`）；`#ghtk-root *` 做最小 reset 抵御 GitHub 全局样式。
+- **可拖拽悬浮球**：Pointer Events，4px 阈值区分点击/拖拽，位置持久化 `GM.setValue('fab-position')`，视口约束，面板贴球展开。
+- **软导航**：站内链接加 `data-ghtk-nav`，`bindSoftNav()` 拦截走 `Turbo.visit()`；`page:change` 时面板重建保持打开；FAB 在 turbo 事件后补回。
+- **上游 about 区块**：`fetchRepoAbout()` 拉 description/language/stars/forks/license/homepage/topics，10 分钟缓存；简介 3 行截断可展开，topics 限高，区块 `max-height: 42%` 自身滚动。
+- **交互细节**：删除下游/删除绑定均为二次确认（自家 Modal，`danger: true`）；确认弹窗遮罩贴合面板区域（`.in-panel`），不全屏压暗。
+- **用户展示区分**：详情头部拆为「上游所有者」与「当前用户」两项，避免同名混淆；左栏当前仓库相关项加蓝点标记，默认选中优先级 = 当前仓库是上游 > 当前仓库是下游 > 第一条。
+- **版本**：`package.json` / `vite.config.ts` / `TOOLKIT_VERSION` 三处同步至 2.5.3。
+- **git**：根 `.gitignore` 与子目录 `.gitignore` 均移除 `dist/`，构建产物纳入版本控制。
 
 #### Fork 入口改为下拉菜单，修复按钮文字溢出（1.4.0 → 1.4.1）
 

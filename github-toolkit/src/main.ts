@@ -4,9 +4,10 @@ import { UIManager } from './core/ui-manager';
 import { PageRouter } from './core/router';
 import { PluginManager } from './core/plugin-manager';
 import { Logger } from './core/logger';
+import { bindSoftNav } from './core/navigate';
 import { builtinPlugins, DEFAULT_ENABLED } from './plugins';
 
-const TOOLKIT_VERSION = '2.5.2';
+const TOOLKIT_VERSION = '2.5.3';
 
 // ---------- 核心组装 ----------
 const eventBus = new EventBus();
@@ -34,6 +35,9 @@ router.start();
 // 页面变化时重新评估插件
 eventBus.on('page:change', (page) => {
   pluginManager.onPageChange(page);
+
+  // 软导航后面板若开着，按新页面重建（保持打开状态）
+  if (ui.panel) renderPanel();
 });
 
 // ---------- 面板渲染 ----------
@@ -157,12 +161,28 @@ ui.onFabToggle = () => {
 
 GM_registerMenuCommand('打开 GitHub Toolkit 面板', renderPanel);
 
+/** Turbo 软导航替换 body 后，FAB 会被一起冲掉，需要补回 */
+function ensureFab(): void {
+  if (!document.getElementById('ghtk-root')?.querySelector('.ghtk-fab')) {
+    ui.createFab();
+  }
+}
+
 function init(): void {
   if (!document.body) {
     setTimeout(init, 100);
     return;
   }
   ui.createFab();
+  bindSoftNav();
+
+  // 软导航结束后补回 FAB，并让面板跟随新页面
+  ['turbo:load', 'turbo:render', 'pjax:end', 'soft-nav:end'].forEach((evt) => {
+    document.addEventListener(evt, () => {
+      ensureFab();
+    });
+  });
+
   Logger.log(`GitHub Toolkit v${TOOLKIT_VERSION} 已启动（图标操作 + 复制链接）`);
 }
 
