@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         GitHub Toolkit
 // @namespace    github-toolkit
-// @version      2.5.3
+// @version      2.6.0
 // @author       Cores
 // @description  高内聚低耦合的 GitHub 模块化工具台（图标操作 + 复制上游链接）
 // @license      MIT
@@ -10,6 +10,7 @@
 // @match        https://gist.github.com/*
 // @connect      api.github.com
 // @grant        GM_addStyle
+// @grant        GM_deleteValue
 // @grant        GM_getValue
 // @grant        GM_registerMenuCommand
 // @grant        GM_setValue
@@ -452,29 +453,34 @@
       flex-shrink: 0 !important;
     }
 
-    /* ===== 上游 about 区块 ===== */
+    /* ===== 上游 about 区块：固定 88px，内容溢出走气泡查看 ===== */
     .ghtk-about {
-      padding: 10px 14px !important;
+      height: 88px !important;
+      flex: 0 0 88px !important;
+      padding: 9px 12px 8px 14px !important;
       border-bottom: 1px solid var(--borderColor-muted, #d8dee4) !important;
-      /* 可收缩：展开过长时自身滚动，不挤压下游列表 */
-      flex-shrink: 1 !important;
+      display: flex !important;
+      flex-direction: column !important;
       min-height: 0 !important;
-      max-height: 42% !important;
-      overflow-y: auto !important;
+      overflow: hidden !important;
+      position: relative !important;
     }
-    .ghtk-about::-webkit-scrollbar { width: 6px !important; }
-    .ghtk-about::-webkit-scrollbar-thumb {
-      background: var(--borderColor-default, #d0d7de) !important;
-      border-radius: 3px !important;
+    .ghtk-about-top {
+      display: flex !important;
+      align-items: flex-start !important;
+      gap: 6px !important;
+      margin-bottom: 5px !important;
+      min-height: 0 !important;
     }
     .ghtk-about-desc {
-      font-size: 11.5px !important;
+      flex: 1 !important;
+      min-width: 0 !important;
+      font-size: 11px !important;
       line-height: 1.5 !important;
       color: var(--fgColor-default, #1f2328) !important;
-      margin-bottom: 8px !important;
-      /* 最多 3 行，超出省略 */
+      /* 固定 2 行，超出省略 */
       display: -webkit-box !important;
-      -webkit-line-clamp: 3 !important;
+      -webkit-line-clamp: 2 !important;
       -webkit-box-orient: vertical !important;
       overflow: hidden !important;
       text-overflow: ellipsis !important;
@@ -485,37 +491,46 @@
       color: var(--fgColor-muted, #59636e) !important;
       font-style: italic !important;
     }
-    /* 展开态取消行数限制 */
-    .ghtk-about.expanded .ghtk-about-desc {
-      display: block !important;
-      -webkit-line-clamp: unset !important;
-      overflow: visible !important;
-    }
-    .ghtk-about-more {
-      display: inline-block !important;
-      margin: -4px 0 8px !important;
-      padding: 0 !important;
+    .ghtk-about-expand {
+      flex-shrink: 0 !important;
+      width: 22px !important;
+      height: 22px !important;
       border: none !important;
       background: none !important;
-      color: #0969da !important;
-      font-size: 10.5px !important;
+      border-radius: 5px !important;
+      color: var(--fgColor-muted, #59636e) !important;
+      display: inline-flex !important;
+      align-items: center !important;
+      justify-content: center !important;
       cursor: pointer !important;
-      font-family: inherit !important;
+      padding: 0 !important;
+      transition: background .12s, color .12s !important;
     }
-    .ghtk-about-more:hover { text-decoration: underline !important; }
+    .ghtk-about-expand:hover {
+      background: #ddf4ff !important;
+      color: #0969da !important;
+    }
+    .ghtk-about-expand svg {
+      width: 13px !important;
+      height: 13px !important;
+      fill: currentColor !important;
+    }
 
     .ghtk-about-meta {
       display: flex !important;
-      flex-wrap: wrap !important;
-      gap: 4px 10px !important;
-      font-size: 10.5px !important;
+      flex-wrap: nowrap !important;
+      gap: 9px !important;
+      font-size: 10px !important;
       color: var(--fgColor-muted, #59636e) !important;
       align-items: center !important;
+      overflow: hidden !important;
+      max-height: 16px !important;
+      flex-shrink: 0 !important;
     }
     .ghtk-about-meta .item {
       display: inline-flex !important;
       align-items: center !important;
-      gap: 4px !important;
+      gap: 3px !important;
       min-width: 0 !important;
       max-width: 100% !important;
     }
@@ -523,42 +538,30 @@
       overflow: hidden !important;
       text-overflow: ellipsis !important;
       white-space: nowrap !important;
-      max-width: 120px !important;
+      max-width: 96px !important;
     }
     .ghtk-about-meta svg {
-      width: 12px !important;
-      height: 12px !important;
+      width: 11px !important;
+      height: 11px !important;
       fill: var(--fgColor-muted, #59636e) !important;
       flex-shrink: 0 !important;
     }
-    .ghtk-about-meta a {
-      color: #0969da !important;
-      text-decoration: none !important;
-      overflow: hidden !important;
-      text-overflow: ellipsis !important;
-      white-space: nowrap !important;
-      max-width: 130px !important;
-      display: inline-block !important;
-    }
-    .ghtk-about-meta a:hover { text-decoration: underline !important; }
 
     .ghtk-lang-dot {
-      width: 8px !important;
-      height: 8px !important;
+      width: 7px !important;
+      height: 7px !important;
       border-radius: 50% !important;
       background: #0969da !important;
       flex-shrink: 0 !important;
     }
     .ghtk-topics {
       display: flex !important;
-      flex-wrap: wrap !important;
-      gap: 4px !important;
-      margin-top: 8px !important;
-      max-height: 52px !important;
+      flex-wrap: nowrap !important;
+      gap: 3px !important;
+      margin-top: 5px !important;
       overflow: hidden !important;
-    }
-    .ghtk-about.expanded .ghtk-topics {
-      max-height: none !important;
+      max-height: 17px !important;
+      flex-shrink: 0 !important;
     }
     .ghtk-topic {
       font-size: 9.5px !important;
@@ -649,6 +652,12 @@
       white-space: nowrap !important;
     }
     .ghtk-drow a:hover { text-decoration: underline !important; }
+    /* 下游行内标记：我的 Fork / 当前仓库 */
+    .ghtk-drow .ghtk-chip {
+      flex-shrink: 0 !important;
+      font-size: 9px !important;
+      padding: 0 5px !important;
+    }
     .ghtk-drow-rm { opacity: 0 !important; }
     .ghtk-drow:hover .ghtk-drow-rm { opacity: 1 !important; }
     .ghtk-drow-rm:hover { color: #cf222e !important; background: #ffebe9 !important; }
@@ -665,17 +674,18 @@
       padding: 10px 14px !important;
       flex-shrink: 0 !important;
     }
-    .ghtk-foot-main { display: flex !important; gap: var(--ghtk-ctl-gap) !important; }
-    .ghtk-foot-main .ghtk-btn.primary { flex: 1 !important; }
-    .ghtk-foot-icons {
+    .ghtk-foot-main {
       display: flex !important;
-      align-items: center !important;
-      gap: 2px !important;
-      margin-top: 8px !important;
-      padding-top: 8px !important;
-      border-top: 1px solid var(--borderColor-muted, #d8dee4) !important;
+      gap: var(--ghtk-ctl-gap) !important;
     }
-    .ghtk-foot-spacer { flex: 1 !important; }
+    .ghtk-foot-main .ghtk-btn {
+      flex: 1 !important;
+      min-width: 0 !important;
+    }
+    /* 第二排：次要操作，同样等宽 */
+    .ghtk-foot-second {
+      margin-top: var(--ghtk-ctl-gap) !important;
+    }
     .ghtk-detail-empty {
       flex: 1 !important;
       display: flex !important;
@@ -1015,6 +1025,154 @@
       background: var(--bgColor-muted, #f6f8fa) !important;
     }
     .ghtk-modal-footer .ghtk-btn { min-width: 76px !important; }
+
+    /* ===== 气泡（about 完整信息） ===== */
+    .ghtk-popover {
+      position: fixed !important;
+      /* 必须高于面板（2147483647），否则会被面板遮住 */
+      z-index: 2147483647 !important;
+      width: 328px !important;
+      max-height: 440px !important;
+      background: var(--bgColor-default, #fff) !important;
+      border: 1px solid var(--borderColor-default, #d0d7de) !important;
+      border-radius: 12px !important;
+      box-shadow: 0 12px 32px rgba(31,35,40,.22) !important;
+      display: flex !important;
+      flex-direction: column !important;
+      overflow: hidden !important;
+      font-size: 12px !important;
+      color: var(--fgColor-default, #1f2328) !important;
+      animation: ghtk-pop-in .13s ease-out !important;
+    }
+    @keyframes ghtk-pop-in {
+      from { opacity: 0; transform: translateY(-4px); }
+      to { opacity: 1; transform: none; }
+    }
+    .ghtk-pop-arrow {
+      position: absolute !important;
+      top: -6px !important;
+      width: 10px !important;
+      height: 10px !important;
+      background: #fff !important;
+      border-left: 1px solid var(--borderColor-default, #d0d7de) !important;
+      border-top: 1px solid var(--borderColor-default, #d0d7de) !important;
+      transform: rotate(45deg) !important;
+      z-index: 1 !important;
+    }
+    .ghtk-pop-arrow.up {
+      top: auto !important;
+      border-left: none !important;
+      border-top: none !important;
+      border-right: 1px solid var(--borderColor-default, #d0d7de) !important;
+      border-bottom: 1px solid var(--borderColor-default, #d0d7de) !important;
+    }
+    .ghtk-pop-head {
+      display: flex !important;
+      align-items: center !important;
+      gap: 8px !important;
+      padding: 11px 12px 9px !important;
+      border-bottom: 1px solid var(--borderColor-muted, #d8dee4) !important;
+      flex-shrink: 0 !important;
+    }
+    .ghtk-pop-title {
+      flex: 1 !important;
+      min-width: 0 !important;
+      font-size: 12.5px !important;
+      font-weight: 600 !important;
+      overflow: hidden !important;
+      text-overflow: ellipsis !important;
+      white-space: nowrap !important;
+    }
+    .ghtk-pop-close {
+      width: 24px !important;
+      height: 24px !important;
+      font-size: 13px !important;
+      flex-shrink: 0 !important;
+    }
+    .ghtk-pop-body {
+      padding: 11px 12px !important;
+      overflow-y: auto !important;
+      min-height: 0 !important;
+      flex: 1 !important;
+    }
+    .ghtk-pop-body::-webkit-scrollbar { width: 6px !important; }
+    .ghtk-pop-body::-webkit-scrollbar-thumb {
+      background: var(--borderColor-default, #d0d7de) !important;
+      border-radius: 3px !important;
+    }
+    .ghtk-pop-desc {
+      font-size: 11.5px !important;
+      line-height: 1.6 !important;
+      color: var(--fgColor-default, #1f2328) !important;
+      margin-bottom: 10px !important;
+      word-break: break-word !important;
+      overflow-wrap: anywhere !important;
+    }
+    .ghtk-pop-grid {
+      display: grid !important;
+      grid-template-columns: 1fr 1fr !important;
+      gap: 7px 10px !important;
+      margin-bottom: 10px !important;
+    }
+    .ghtk-pop-cell { min-width: 0 !important; }
+    .ghtk-pop-k {
+      font-size: 9.5px !important;
+      color: var(--fgColor-muted, #59636e) !important;
+      text-transform: uppercase !important;
+      letter-spacing: .4px !important;
+      margin-bottom: 1px !important;
+    }
+    .ghtk-pop-v {
+      font-size: 11px !important;
+      font-weight: 600 !important;
+      color: var(--fgColor-default, #1f2328) !important;
+      overflow: hidden !important;
+      text-overflow: ellipsis !important;
+      white-space: nowrap !important;
+    }
+    .ghtk-pop-sec {
+      font-size: 9.5px !important;
+      font-weight: 600 !important;
+      color: var(--fgColor-muted, #59636e) !important;
+      letter-spacing: .5px !important;
+      text-transform: uppercase !important;
+      margin-bottom: 5px !important;
+    }
+    .ghtk-pop-topics {
+      display: flex !important;
+      flex-wrap: wrap !important;
+      gap: 4px !important;
+      margin-bottom: 10px !important;
+    }
+    .ghtk-pop-home {
+      font-size: 11px !important;
+      margin-bottom: 2px !important;
+    }
+    .ghtk-pop-home a {
+      color: #0969da !important;
+      text-decoration: none !important;
+      word-break: break-all !important;
+    }
+    .ghtk-pop-home a:hover { text-decoration: underline !important; }
+    .ghtk-pop-note {
+      font-size: 10.5px !important;
+      color: #9a6700 !important;
+      margin-top: 6px !important;
+    }
+    .ghtk-pop-foot {
+      display: flex !important;
+      gap: 6px !important;
+      padding: 9px 12px !important;
+      border-top: 1px solid var(--borderColor-muted, #d8dee4) !important;
+      background: var(--bgColor-muted, #f6f8fa) !important;
+      flex-shrink: 0 !important;
+    }
+    .ghtk-pop-foot .ghtk-btn {
+      flex: 1 !important;
+      min-width: 0 !important;
+      height: 28px !important;
+      font-size: 11px !important;
+    }
 
     .ghtk-toast {
       position: fixed !important;
@@ -1585,6 +1743,124 @@
       });
     }
   };
+  const PREFIX = "ghtk-cache:";
+  const MAX_ENTRIES = 200;
+  const MAX_ENTRY_BYTES = 100 * 1024;
+  class PersistentCache {
+    memory = /* @__PURE__ */ new Map();
+    /** 按 key 记录最近访问时间，用于 LRU 淘汰 */
+    hits = /* @__PURE__ */ new Map();
+    /** key 索引，用于容量控制 */
+    indexLoaded = false;
+    index = [];
+    /** 读取缓存：内存优先，其次持久层 */
+    read(fullKey, ttl) {
+      const now = Date.now();
+      const mem = this.memory.get(fullKey);
+      if (mem) {
+        const fresh = now - mem.at < ttl;
+        this.touch(fullKey);
+        return { data: mem.data, stale: !fresh };
+      }
+      try {
+        const raw = GM_getValue(PREFIX + fullKey, null);
+        if (raw && typeof raw.at === "number") {
+          this.memory.set(fullKey, raw);
+          this.touch(fullKey);
+          const fresh = now - raw.at < ttl;
+          return { data: raw.data, stale: !fresh };
+        }
+      } catch {
+      }
+      return { data: null, stale: true };
+    }
+    /** 写入缓存（同时写内存与持久层） */
+    write(fullKey, data) {
+      const entry = { data, at: Date.now() };
+      this.memory.set(fullKey, entry);
+      this.touch(fullKey);
+      try {
+        const serialized = JSON.stringify(entry);
+        if (serialized.length > MAX_ENTRY_BYTES) return;
+        GM_setValue(PREFIX + fullKey, entry);
+        this.addToIndex(fullKey);
+      } catch {
+      }
+    }
+    /** 记录访问时间并维护索引 */
+    touch(fullKey) {
+      this.hits.set(fullKey, Date.now());
+    }
+    loadIndex() {
+      if (this.indexLoaded) return;
+      this.indexLoaded = true;
+      try {
+        const raw = GM_getValue(PREFIX + "__index__", null);
+        if (Array.isArray(raw)) this.index = raw;
+      } catch {
+        this.index = [];
+      }
+    }
+    addToIndex(fullKey) {
+      this.loadIndex();
+      if (this.index.includes(fullKey)) return;
+      this.index.push(fullKey);
+      if (this.index.length > MAX_ENTRIES) {
+        const sorted = [...this.index].sort(
+          (a, b) => (this.hits.get(a) ?? 0) - (this.hits.get(b) ?? 0)
+        );
+        const removeCount = this.index.length - MAX_ENTRIES;
+        const toRemove = sorted.slice(0, removeCount);
+        for (const k of toRemove) {
+          this.index = this.index.filter((x) => x !== k);
+          this.memory.delete(k);
+          try {
+            GM_deleteValue(PREFIX + k);
+          } catch {
+          }
+        }
+      }
+      try {
+        GM_setValue(PREFIX + "__index__", this.index);
+      } catch {
+      }
+    }
+    /** 清空全部缓存（供调试/菜单使用） */
+    clear() {
+      this.memory.clear();
+      this.hits.clear();
+      this.loadIndex();
+      for (const k of this.index) {
+        try {
+          GM_deleteValue(PREFIX + k);
+        } catch {
+        }
+      }
+      this.index = [];
+      try {
+        GM_setValue(PREFIX + "__index__", []);
+      } catch {
+      }
+    }
+  }
+  const cache = new PersistentCache();
+  function cachedFetch(opts, fetcher, onData) {
+    const { data, stale } = cache.read(opts.key, opts.ttl);
+    if (data !== null) {
+      onData(data);
+      if (!stale) return;
+    }
+    fetcher().then((fresh) => {
+      if (fresh !== null && fresh !== void 0) {
+        cache.write(opts.key, fresh);
+        if (data === null || JSON.stringify(fresh) !== JSON.stringify(data)) {
+          onData(fresh);
+        }
+      } else if (data === null) {
+        onData(null);
+      }
+    });
+  }
   const API_HEADERS = {
     Accept: "application/vnd.github+json",
     "X-GitHub-Api-Version": "2022-11-28"
@@ -1644,11 +1920,22 @@
   const forkCache = /* @__PURE__ */ new Map();
   const FORK_CACHE_TTL = 10 * 60 * 1e3;
   const aboutCache = /* @__PURE__ */ new Map();
-  const ABOUT_CACHE_TTL = 10 * 60 * 1e3;
+  const ABOUT_TTL = 24 * 60 * 60 * 1e3;
+  function loadRepoAbout(owner, repo, onData) {
+    const key = `about:${owner}/${repo}`.toLowerCase();
+    cachedFetch(
+      { key, ttl: ABOUT_TTL },
+      () => fetchRepoAbout(owner, repo),
+      (data) => {
+        if (data) aboutCache.set(key, { data, at: Date.now() });
+        onData(data);
+      }
+    );
+  }
   function fetchRepoAbout(owner, repo) {
-    const key = `${owner}/${repo}`.toLowerCase();
+    const key = `about:${owner}/${repo}`.toLowerCase();
     const cached = aboutCache.get(key);
-    if (cached && Date.now() - cached.at < ABOUT_CACHE_TTL) {
+    if (cached && Date.now() - cached.at < ABOUT_TTL) {
       return Promise.resolve(cached.data);
     }
     return new Promise((resolve) => {
@@ -1734,6 +2021,135 @@
       }
     });
   }
+  const POPOVER_CLASS = "ghtk-popover";
+  function escapeHtml$1(s) {
+    return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+  }
+  function compactNum$1(n) {
+    if (n < 1e3) return String(n);
+    if (n < 1e4) return (n / 1e3).toFixed(1).replace(/\.0$/, "") + "k";
+    return Math.round(n / 1e3) + "k";
+  }
+  function closePopover() {
+    document.querySelectorAll("." + POPOVER_CLASS).forEach((el) => el.remove());
+    document.removeEventListener("keydown", onDocKey);
+    document.removeEventListener("mousedown", onDocDown, true);
+  }
+  const onDocKey = (e) => {
+    if (e.key === "Escape") closePopover();
+  };
+  const onDocDown = (e) => {
+    const t = e.target;
+    if (!t) return;
+    if (t.closest("." + POPOVER_CLASS)) return;
+    if (t.closest("[data-ghtk-popover-trigger]")) return;
+    closePopover();
+  };
+  function showAboutPopover({ about, anchor, pageType, actions = [] }) {
+    injectGlobalStyles();
+    const already = document.querySelector("." + POPOVER_CLASS);
+    const sameAnchor = already?.getAttribute("data-anchor") === about.full_name;
+    closePopover();
+    if (already && sameAnchor) return;
+    const desc = about.description?.trim() || "暂无简介";
+    const metaRows = [
+      ["页面", pageType || "—"],
+      ["主语言", about.language || "—"],
+      ["Star", compactNum$1(about.stars)],
+      ["Fork", compactNum$1(about.forks)],
+      ["License", about.license || "—"],
+      ["Open Issues", String(about.openIssues)]
+    ];
+    const topics = about.topics.length ? `<div class="ghtk-pop-sec">Topics · ${about.topics.length}</div>
+       <div class="ghtk-pop-topics">${about.topics.map((t) => `<span class="ghtk-topic">${escapeHtml$1(t)}</span>`).join("")}</div>` : "";
+    const home = about.homepage ? `<div class="ghtk-pop-sec">主页</div>
+       <div class="ghtk-pop-home"><a href="${escapeHtml$1(about.homepage)}" target="_blank" rel="noreferrer">${escapeHtml$1(
+    about.homepage.replace(/^https?:\/\//, "")
+  )}</a></div>` : "";
+    const footHtml = actions.length ? `<div class="ghtk-pop-foot">${actions.map((a, i) => {
+    if (a.href) {
+      return `<a class="ghtk-btn ${a.primary ? "primary" : ""}" data-act="${i}" href="${escapeHtml$1(
+        a.href
+      )}" target="_blank" rel="noreferrer">${escapeHtml$1(a.label)}</a>`;
+    }
+    return `<button class="ghtk-btn ${a.primary ? "primary" : ""}" data-act="${i}" type="button">${escapeHtml$1(
+      a.label
+    )}</button>`;
+  }).join("")}</div>` : "";
+    const el = document.createElement("div");
+    el.className = POPOVER_CLASS;
+    el.setAttribute("data-anchor", about.full_name);
+    el.innerHTML = `
+    <div class="ghtk-pop-arrow"></div>
+    <div class="ghtk-pop-head">
+      <div class="ghtk-pop-title" title="${escapeHtml$1(about.full_name)}">${escapeHtml$1(about.full_name)}</div>
+      <button class="ghtk-icon-btn ghtk-pop-close" type="button" title="关闭">✕</button>
+    </div>
+    <div class="ghtk-pop-body">
+      <div class="ghtk-pop-desc">${escapeHtml$1(desc)}</div>
+      <div class="ghtk-pop-grid">
+        ${metaRows.map(
+    ([k, v]) => `
+          <div class="ghtk-pop-cell">
+            <div class="ghtk-pop-k">${escapeHtml$1(k)}</div>
+            <div class="ghtk-pop-v" title="${escapeHtml$1(v)}">${escapeHtml$1(v)}</div>
+          </div>`
+  ).join("")}
+      </div>
+      ${topics}
+      ${home}
+      ${about.archived ? '<div class="ghtk-pop-note">该仓库已归档</div>' : ""}
+    </div>
+    ${footHtml}
+  `;
+    getRoot().appendChild(el);
+    const rect = anchor.getBoundingClientRect();
+    const gap = 8;
+    const margin = 8;
+    const panel = document.querySelector(".ghtk-panel");
+    const panelRect = panel?.getBoundingClientRect() ?? null;
+    const maxByPanel = panelRect ? Math.max(240, panelRect.width - margin * 2) : 328;
+    const pw = Math.min(328, maxByPanel);
+    el.style.width = pw + "px";
+    const ph = el.offsetHeight || 320;
+    const bounds = panelRect ? { left: panelRect.left, top: panelRect.top, right: panelRect.right, bottom: panelRect.bottom } : { left: 0, top: 0, right: window.innerWidth, bottom: window.innerHeight };
+    let left = rect.left + rect.width / 2 - pw / 2;
+    left = Math.min(Math.max(bounds.left + margin, left), Math.max(bounds.left + margin, bounds.right - pw - margin));
+    let top = rect.bottom + gap;
+    let flipUp = false;
+    if (top + ph > bounds.bottom - margin) {
+      top = rect.top - ph - gap;
+      flipUp = true;
+      if (top < bounds.top + margin) {
+        top = Math.max(bounds.top + margin, bounds.bottom - ph - margin);
+      }
+    }
+    el.style.left = left + "px";
+    el.style.top = top + "px";
+    const arrow = el.querySelector(".ghtk-pop-arrow");
+    if (arrow) {
+      const ax = Math.min(Math.max(12, rect.left + rect.width / 2 - left - 5), pw - 22);
+      arrow.style.left = ax + "px";
+      if (flipUp) {
+        arrow.classList.add("up");
+        arrow.style.top = "auto";
+        arrow.style.bottom = "-6px";
+      }
+    }
+    el.querySelector(".ghtk-pop-close")?.addEventListener("click", () => closePopover());
+    actions.forEach((a, i) => {
+      el.querySelector(`[data-act="${i}"]`)?.addEventListener("click", (e) => {
+        if (!a.onClick) return;
+        e.preventDefault();
+        a.onClick();
+        closePopover();
+      });
+    });
+    setTimeout(() => {
+      document.addEventListener("keydown", onDocKey);
+      document.addEventListener("mousedown", onDocDown, true);
+    }, 0);
+  }
   const BIND_STORAGE_KEY = "upstream-downstream-bindings";
   function loadBindings() {
     return GM_getValue(BIND_STORAGE_KEY, []);
@@ -1744,7 +2160,6 @@
   const ICONS = {
     search: `<svg viewBox="0 0 16 16"><path d="M10.68 11.74a6 6 0 0 1-7.922-8.982 6 6 0 0 1 8.982 7.922l3.04 3.04a.749.749 0 0 1-.326 1.275.749.749 0 0 1-.734-.215ZM11.5 7a4.499 4.499 0 1 0-8.997 0A4.499 4.499 0 0 0 11.5 7Z"/></svg>`,
     plus: `<svg viewBox="0 0 16 16"><path d="M7.75 2a.75.75 0 0 1 .75.75V7h4.25a.75.75 0 0 1 0 1.5H8.5v4.25a.75.75 0 0 1-1.5 0V8.5H2.75a.75.75 0 0 1 0-1.5H7V2.75A.75.75 0 0 1 7.75 2Z"/></svg>`,
-    copy: `<svg viewBox="0 0 16 16"><path d="M0 6.75C0 5.784.784 5 1.75 5h1.5a.75.75 0 0 1 0 1.5h-1.5a.25.25 0 0 0-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 0 0 .25-.25v-1.5a.75.75 0 0 1 1.5 0v1.5A1.75 1.75 0 0 1 9.25 16h-7.5A1.75 1.75 0 0 1 0 14.25ZM5 1.75C5 .784 5.784 0 6.75 0h7.5C15.216 0 16 .784 16 1.75v7.5A1.75 1.75 0 0 1 14.25 11h-7.5A1.75 1.75 0 0 1 5 9.25Zm1.75-.25a.25.25 0 0 0-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 0 0 .25-.25v-7.5a.25.25 0 0 0-.25-.25Z"/></svg>`,
     del: `<svg viewBox="0 0 16 16"><path d="M3.72 3.72a.75.75 0 0 1 1.06 0L8 6.94l3.22-3.22a.75.75 0 1 1 1.06 1.06L9.06 8l3.22 3.22a.75.75 0 1 1-1.06 1.06L8 9.06l-3.22 3.22a.75.75 0 0 1-1.06-1.06L6.94 8 3.72 4.78a.75.75 0 0 1 0-1.06Z"/></svg>`
   };
   function compactNum(n) {
@@ -1775,21 +2190,27 @@
     Lua: "#000080",
     Zig: "#ec915c"
   };
-  function renderAbout(about, full, expanded) {
+  function renderAbout(about, full, pageType) {
+    const expandIcon = `<svg viewBox="0 0 16 16"><path d="M3.75 2h3.5a.75.75 0 0 1 0 1.5h-3.5a.25.25 0 0 0-.25.25v8.5c0 .138.112.25.25.25h8.5a.25.25 0 0 0 .25-.25v-3.5a.75.75 0 0 1 1.5 0v3.5A1.75 1.75 0 0 1 12.25 14h-8.5A1.75 1.75 0 0 1 2 12.25v-8.5C2 2.784 2.784 2 3.75 2Zm6.854-1h4.146a.25.25 0 0 1 .25.25v4.146a.25.25 0 0 1-.427.177L13.03 4.03 9.28 7.78a.75.75 0 0 1-1.06-1.06l3.75-3.75-1.543-1.543A.25.25 0 0 1 10.604 1Z"/></svg>`;
     if (about === void 0) {
       return `
       <div class="ghtk-about">
-        <div class="ghtk-about-desc muted">正在加载仓库简介…</div>
+        <div class="ghtk-about-top"><div class="ghtk-about-desc muted">正在加载仓库简介…</div></div>
+        <div class="ghtk-about-meta"></div>
+        <div class="ghtk-topics"></div>
       </div>
     `;
     }
     if (about === null) {
-      return "";
+      return `
+      <div class="ghtk-about">
+        <div class="ghtk-about-top"><div class="ghtk-about-desc muted">无仓库信息</div></div>
+        <div class="ghtk-about-meta"></div>
+        <div class="ghtk-topics"></div>
+      </div>
+    `;
     }
     const desc = about.description?.trim() || "";
-    const needToggle = desc.length > 70 || desc.split("\n").length > 3;
-    const descHtml = desc ? `<div class="ghtk-about-desc">${escapeHtml(desc)}</div>
-       ${needToggle ? `<button class="ghtk-about-more" id="ghtk-about-more" type="button">${expanded ? "收起" : "展开全部"}</button>` : ""}` : `<div class="ghtk-about-desc muted">暂无简介</div>`;
     const metaItems = [];
     if (about.language) {
       const color = LANG_COLORS[about.language] || "#8b949e";
@@ -1808,25 +2229,19 @@
       );
     }
     if (about.license) {
-      metaItems.push(
-        `<span class="item"><svg viewBox="0 0 16 16"><path d="M8.75.75V2h.985c.304 0 .603.08.867.231l1.29.736c.038.022.08.033.124.033h2.234a.75.75 0 0 1 0 1.5h-.427l2.111 4.692a.75.75 0 0 1-.154.838l-.53-.53.529.531-.001.002-.002.002-.006.006-.006.005-.01.01-.045.04c-.21.176-.441.327-.686.45C14.556 10.78 13.88 11 13 11a4.498 4.498 0 0 1-2.023-.454 3.544 3.544 0 0 1-.686-.45l-.045-.04-.016-.015-.002-.002-.001-.002.528-.53-.528.53-.154-.837 2.11-4.692h-.428a.75.75 0 0 1 0-1.5h2.234a.25.25 0 0 0 .124-.033l1.29-.735c.264-.151.563-.231.867-.231h.985V.75a.75.75 0 0 1 1.5 0Zm-1.5 0a.75.75 0 0 1 1.5 0Z"/></svg><span>${escapeHtml(about.license)}</span></span>`
-      );
+      metaItems.push(`<span class="item"><span>${escapeHtml(about.license)}</span></span>`);
     }
-    if (about.homepage) {
-      const home = about.homepage.replace(/^https?:\/\//, "");
-      metaItems.push(
-        `<span class="item"><svg viewBox="0 0 16 16"><path d="M3.75 2h3.5a.75.75 0 0 1 0 1.5h-3.5a.25.25 0 0 0-.25.25v8.5c0 .138.112.25.25.25h8.5a.25.25 0 0 0 .25-.25v-3.5a.75.75 0 0 1 1.5 0v3.5A1.75 1.75 0 0 1 12.25 14h-8.5A1.75 1.75 0 0 1 2 12.25v-8.5C2 2.784 2.784 2 3.75 2Zm6.854-1h4.146a.25.25 0 0 1 .25.25v4.146a.25.25 0 0 1-.427.177L13.03 4.03 9.28 7.78a.75.75 0 0 1-1.06-1.06l3.75-3.75-1.543-1.543A.25.25 0 0 1 10.604 1Z"/></svg><a href="${escapeHtml(about.homepage)}" target="_blank" rel="noreferrer" title="${escapeHtml(about.homepage)}">${escapeHtml(home)}</a></span>`
-      );
-    }
-    if (about.archived) {
-      metaItems.push(`<span class="item" style="color:#9a6700">已归档</span>`);
-    }
-    const topics = about.topics.length ? `<div class="ghtk-topics">${about.topics.slice(0, expanded ? about.topics.length : 6).map((t) => `<span class="ghtk-topic">${escapeHtml(t)}</span>`).join("")}${!expanded && about.topics.length > 6 ? `<span class="ghtk-topic">+${about.topics.length - 6}</span>` : ""}</div>` : "";
+    const showTopics = about.topics.slice(0, 3);
+    const restTopics = about.topics.length - showTopics.length;
+    const topicsHtml = about.topics.length ? `<div class="ghtk-topics">${showTopics.map((t) => `<span class="ghtk-topic">${escapeHtml(t)}</span>`).join("")}${restTopics > 0 ? `<span class="ghtk-topic" style="color:#59636e;background:#f6f8fa;border-color:#d0d7de">+${restTopics}</span>` : ""}</div>` : '<div class="ghtk-topics"></div>';
     return `
-    <div class="ghtk-about ${expanded ? "expanded" : ""}">
-      ${descHtml}
-      ${metaItems.length ? `<div class="ghtk-about-meta">${metaItems.join("")}</div>` : ""}
-      ${topics}
+    <div class="ghtk-about">
+      <div class="ghtk-about-top">
+        <div class="ghtk-about-desc">${desc ? escapeHtml(desc) : '<span style="font-style:italic">暂无简介</span>'}</div>
+        <button class="ghtk-about-expand" id="ghtk-about-detail" type="button" data-ghtk-popover-trigger title="查看完整信息">${expandIcon}</button>
+      </div>
+      <div class="ghtk-about-meta">${metaItems.join("")}</div>
+      ${topicsHtml}
     </div>
   `;
   }
@@ -1876,8 +2291,7 @@
           query: "",
           status: { text: "" },
           draft: "",
-          about: /* @__PURE__ */ new Map(),
-          aboutExpanded: false
+          about: /* @__PURE__ */ new Map()
         };
         const railList = root.querySelector("#ghtk-rail-list");
         const railState = root.querySelector("#ghtk-rail-state");
@@ -1965,22 +2379,26 @@
           const downs = b.downstreams || [];
           const full = `${b.owner}/${b.repo}`;
           const about = state.about.get(full.toLowerCase());
-          const aboutHtml = renderAbout(about, full, state.aboutExpanded);
+          const aboutHtml = renderAbout(about, full, page.type);
           const ownerText = `${b.owner}`;
-          const rows = downs.length ? downs.map(
-            (d) => `
+          const rows = downs.length ? downs.map((d) => {
+            const isMine = !!currentUser && d.toLowerCase().startsWith(`${currentUser.toLowerCase()}/`);
+            const isCurrentPage = !!currentRepo && d.toLowerCase() === currentRepo.toLowerCase();
+            const tag = isCurrentPage ? '<span class="ghtk-chip">当前仓库</span>' : isMine ? '<span class="ghtk-chip">我的 Fork</span>' : "";
+            return `
             <div class="ghtk-drow">
               <span class="ghtk-drow-dash">└</span>
               <a href="https://github.com/${d}" data-ghtk-nav title="打开下游 ${d}">${d}</a>
+              ${tag}
               <button class="ghtk-icon-btn ghtk-drow-rm" data-remove="${d}" type="button" title="移除下游">${ICONS.del}</button>
             </div>
-          `
-          ).join("") : `<div class="ghtk-dempty">无下游</div>`;
+          `;
+          }).join("") : `<div class="ghtk-dempty">无下游</div>`;
           detail.innerHTML = `
           <div class="ghtk-detail-head">
             <div class="ghtk-detail-title">
               <span class="name" title="${full}">${full}</span>
-              ${isUpstreamOfCurrent(b) ? '<span class="ghtk-chip">当前仓库</span>' : isDownstreamOfCurrent(b) ? '<span class="ghtk-chip">我的 Fork</span>' : ""}
+              ${isUpstreamOfCurrent(b) ? '<span class="ghtk-chip">当前仓库</span>' : ""}
             </div>
             <div class="ghtk-detail-sub">
               <span>上游所有者 <b>${ownerText}</b></span>
@@ -1998,19 +2416,38 @@
           <div class="ghtk-detail-foot">
             <div class="ghtk-foot-main">
               <button class="ghtk-btn primary" id="ghtk-auto-bind" type="button">绑定下游</button>
-              <a class="ghtk-btn" href="https://github.com/${full}" data-ghtk-nav>打开上游</a>
+              <button class="ghtk-btn" id="ghtk-manual-bind" type="button">手动绑定</button>
             </div>
-            <div class="ghtk-foot-icons">
-              <button class="ghtk-icon-btn" id="ghtk-manual-bind" type="button" title="手动绑定下游">${ICONS.plus}</button>
-              <button class="ghtk-icon-btn" id="ghtk-copy-up" type="button" title="复制上游链接">${ICONS.copy}</button>
-              <div class="ghtk-foot-spacer"></div>
-              <button class="ghtk-icon-btn danger" id="ghtk-remove-up" type="button" title="删除绑定">${ICONS.del}</button>
+            <div class="ghtk-foot-main ghtk-foot-second">
+              <a class="ghtk-btn" href="https://github.com/${full}" data-ghtk-nav>打开上游</a>
+              <button class="ghtk-btn" id="ghtk-copy-up" type="button">复制链接</button>
+              <button class="ghtk-btn danger" id="ghtk-remove-up" type="button">删除</button>
             </div>
           </div>
         `;
-          detail.querySelector("#ghtk-about-more")?.addEventListener("click", () => {
-            state.aboutExpanded = !state.aboutExpanded;
-            renderDetail();
+          detail.querySelector("#ghtk-about-detail")?.addEventListener("click", (ev) => {
+            ev.preventDefault();
+            ev.stopPropagation();
+            const data = state.about.get(full.toLowerCase());
+            if (!data) {
+              ctx.ui.toast(state.about.has(full.toLowerCase()) ? "无仓库信息" : "正在加载…");
+              return;
+            }
+            const anchor = ev.currentTarget;
+            showAboutPopover({
+              about: data,
+              anchor,
+              pageType: page.type,
+              actions: [
+                { label: "打开仓库", href: `https://github.com/${full}` },
+                {
+                  label: "复制链接",
+                  onClick: () => {
+                    navigator.clipboard.writeText(`https://github.com/${full}`).then(() => ctx.ui.toast("已复制")).catch(() => ctx.ui.toast("复制失败"));
+                  }
+                }
+              ]
+            });
           });
           detail.querySelectorAll("[data-remove]").forEach((btn) => {
             btn.addEventListener("click", async () => {
@@ -2115,7 +2552,7 @@
         const loadAbout = (b) => {
           const key = `${b.owner}/${b.repo}`.toLowerCase();
           if (state.about.has(key)) return;
-          fetchRepoAbout(b.owner, b.repo).then((data) => {
+          loadRepoAbout(b.owner, b.repo, (data) => {
             state.about.set(key, data);
             const cur = loadBindings()[state.selected];
             if (!cur) return;
@@ -2354,7 +2791,7 @@
   }
   const builtinPlugins = [UpstreamBindPlugin, AccelPlugin];
   const DEFAULT_ENABLED = ["upstream-bind", "github-accel"];
-  const TOOLKIT_VERSION = "2.5.3";
+  const TOOLKIT_VERSION = "2.6.0";
   const eventBus = new EventBus();
   const dom = new DOMHelper();
   const ui = new UIManager();

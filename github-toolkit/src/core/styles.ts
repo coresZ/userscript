@@ -393,29 +393,34 @@ const CSS = `
       flex-shrink: 0 !important;
     }
 
-    /* ===== 上游 about 区块 ===== */
+    /* ===== 上游 about 区块：固定 88px，内容溢出走气泡查看 ===== */
     .ghtk-about {
-      padding: 10px 14px !important;
+      height: 88px !important;
+      flex: 0 0 88px !important;
+      padding: 9px 12px 8px 14px !important;
       border-bottom: 1px solid var(--borderColor-muted, #d8dee4) !important;
-      /* 可收缩：展开过长时自身滚动，不挤压下游列表 */
-      flex-shrink: 1 !important;
+      display: flex !important;
+      flex-direction: column !important;
       min-height: 0 !important;
-      max-height: 42% !important;
-      overflow-y: auto !important;
+      overflow: hidden !important;
+      position: relative !important;
     }
-    .ghtk-about::-webkit-scrollbar { width: 6px !important; }
-    .ghtk-about::-webkit-scrollbar-thumb {
-      background: var(--borderColor-default, #d0d7de) !important;
-      border-radius: 3px !important;
+    .ghtk-about-top {
+      display: flex !important;
+      align-items: flex-start !important;
+      gap: 6px !important;
+      margin-bottom: 5px !important;
+      min-height: 0 !important;
     }
     .ghtk-about-desc {
-      font-size: 11.5px !important;
+      flex: 1 !important;
+      min-width: 0 !important;
+      font-size: 11px !important;
       line-height: 1.5 !important;
       color: var(--fgColor-default, #1f2328) !important;
-      margin-bottom: 8px !important;
-      /* 最多 3 行，超出省略 */
+      /* 固定 2 行，超出省略 */
       display: -webkit-box !important;
-      -webkit-line-clamp: 3 !important;
+      -webkit-line-clamp: 2 !important;
       -webkit-box-orient: vertical !important;
       overflow: hidden !important;
       text-overflow: ellipsis !important;
@@ -426,37 +431,46 @@ const CSS = `
       color: var(--fgColor-muted, #59636e) !important;
       font-style: italic !important;
     }
-    /* 展开态取消行数限制 */
-    .ghtk-about.expanded .ghtk-about-desc {
-      display: block !important;
-      -webkit-line-clamp: unset !important;
-      overflow: visible !important;
-    }
-    .ghtk-about-more {
-      display: inline-block !important;
-      margin: -4px 0 8px !important;
-      padding: 0 !important;
+    .ghtk-about-expand {
+      flex-shrink: 0 !important;
+      width: 22px !important;
+      height: 22px !important;
       border: none !important;
       background: none !important;
-      color: #0969da !important;
-      font-size: 10.5px !important;
+      border-radius: 5px !important;
+      color: var(--fgColor-muted, #59636e) !important;
+      display: inline-flex !important;
+      align-items: center !important;
+      justify-content: center !important;
       cursor: pointer !important;
-      font-family: inherit !important;
+      padding: 0 !important;
+      transition: background .12s, color .12s !important;
     }
-    .ghtk-about-more:hover { text-decoration: underline !important; }
+    .ghtk-about-expand:hover {
+      background: #ddf4ff !important;
+      color: #0969da !important;
+    }
+    .ghtk-about-expand svg {
+      width: 13px !important;
+      height: 13px !important;
+      fill: currentColor !important;
+    }
 
     .ghtk-about-meta {
       display: flex !important;
-      flex-wrap: wrap !important;
-      gap: 4px 10px !important;
-      font-size: 10.5px !important;
+      flex-wrap: nowrap !important;
+      gap: 9px !important;
+      font-size: 10px !important;
       color: var(--fgColor-muted, #59636e) !important;
       align-items: center !important;
+      overflow: hidden !important;
+      max-height: 16px !important;
+      flex-shrink: 0 !important;
     }
     .ghtk-about-meta .item {
       display: inline-flex !important;
       align-items: center !important;
-      gap: 4px !important;
+      gap: 3px !important;
       min-width: 0 !important;
       max-width: 100% !important;
     }
@@ -464,42 +478,30 @@ const CSS = `
       overflow: hidden !important;
       text-overflow: ellipsis !important;
       white-space: nowrap !important;
-      max-width: 120px !important;
+      max-width: 96px !important;
     }
     .ghtk-about-meta svg {
-      width: 12px !important;
-      height: 12px !important;
+      width: 11px !important;
+      height: 11px !important;
       fill: var(--fgColor-muted, #59636e) !important;
       flex-shrink: 0 !important;
     }
-    .ghtk-about-meta a {
-      color: #0969da !important;
-      text-decoration: none !important;
-      overflow: hidden !important;
-      text-overflow: ellipsis !important;
-      white-space: nowrap !important;
-      max-width: 130px !important;
-      display: inline-block !important;
-    }
-    .ghtk-about-meta a:hover { text-decoration: underline !important; }
 
     .ghtk-lang-dot {
-      width: 8px !important;
-      height: 8px !important;
+      width: 7px !important;
+      height: 7px !important;
       border-radius: 50% !important;
       background: #0969da !important;
       flex-shrink: 0 !important;
     }
     .ghtk-topics {
       display: flex !important;
-      flex-wrap: wrap !important;
-      gap: 4px !important;
-      margin-top: 8px !important;
-      max-height: 52px !important;
+      flex-wrap: nowrap !important;
+      gap: 3px !important;
+      margin-top: 5px !important;
       overflow: hidden !important;
-    }
-    .ghtk-about.expanded .ghtk-topics {
-      max-height: none !important;
+      max-height: 17px !important;
+      flex-shrink: 0 !important;
     }
     .ghtk-topic {
       font-size: 9.5px !important;
@@ -590,6 +592,12 @@ const CSS = `
       white-space: nowrap !important;
     }
     .ghtk-drow a:hover { text-decoration: underline !important; }
+    /* 下游行内标记：我的 Fork / 当前仓库 */
+    .ghtk-drow .ghtk-chip {
+      flex-shrink: 0 !important;
+      font-size: 9px !important;
+      padding: 0 5px !important;
+    }
     .ghtk-drow-rm { opacity: 0 !important; }
     .ghtk-drow:hover .ghtk-drow-rm { opacity: 1 !important; }
     .ghtk-drow-rm:hover { color: #cf222e !important; background: #ffebe9 !important; }
@@ -606,17 +614,18 @@ const CSS = `
       padding: 10px 14px !important;
       flex-shrink: 0 !important;
     }
-    .ghtk-foot-main { display: flex !important; gap: var(--ghtk-ctl-gap) !important; }
-    .ghtk-foot-main .ghtk-btn.primary { flex: 1 !important; }
-    .ghtk-foot-icons {
+    .ghtk-foot-main {
       display: flex !important;
-      align-items: center !important;
-      gap: 2px !important;
-      margin-top: 8px !important;
-      padding-top: 8px !important;
-      border-top: 1px solid var(--borderColor-muted, #d8dee4) !important;
+      gap: var(--ghtk-ctl-gap) !important;
     }
-    .ghtk-foot-spacer { flex: 1 !important; }
+    .ghtk-foot-main .ghtk-btn {
+      flex: 1 !important;
+      min-width: 0 !important;
+    }
+    /* 第二排：次要操作，同样等宽 */
+    .ghtk-foot-second {
+      margin-top: var(--ghtk-ctl-gap) !important;
+    }
     .ghtk-detail-empty {
       flex: 1 !important;
       display: flex !important;
@@ -956,6 +965,154 @@ const CSS = `
       background: var(--bgColor-muted, #f6f8fa) !important;
     }
     .ghtk-modal-footer .ghtk-btn { min-width: 76px !important; }
+
+    /* ===== 气泡（about 完整信息） ===== */
+    .ghtk-popover {
+      position: fixed !important;
+      /* 必须高于面板（2147483647），否则会被面板遮住 */
+      z-index: 2147483647 !important;
+      width: 328px !important;
+      max-height: 440px !important;
+      background: var(--bgColor-default, #fff) !important;
+      border: 1px solid var(--borderColor-default, #d0d7de) !important;
+      border-radius: 12px !important;
+      box-shadow: 0 12px 32px rgba(31,35,40,.22) !important;
+      display: flex !important;
+      flex-direction: column !important;
+      overflow: hidden !important;
+      font-size: 12px !important;
+      color: var(--fgColor-default, #1f2328) !important;
+      animation: ghtk-pop-in .13s ease-out !important;
+    }
+    @keyframes ghtk-pop-in {
+      from { opacity: 0; transform: translateY(-4px); }
+      to { opacity: 1; transform: none; }
+    }
+    .ghtk-pop-arrow {
+      position: absolute !important;
+      top: -6px !important;
+      width: 10px !important;
+      height: 10px !important;
+      background: #fff !important;
+      border-left: 1px solid var(--borderColor-default, #d0d7de) !important;
+      border-top: 1px solid var(--borderColor-default, #d0d7de) !important;
+      transform: rotate(45deg) !important;
+      z-index: 1 !important;
+    }
+    .ghtk-pop-arrow.up {
+      top: auto !important;
+      border-left: none !important;
+      border-top: none !important;
+      border-right: 1px solid var(--borderColor-default, #d0d7de) !important;
+      border-bottom: 1px solid var(--borderColor-default, #d0d7de) !important;
+    }
+    .ghtk-pop-head {
+      display: flex !important;
+      align-items: center !important;
+      gap: 8px !important;
+      padding: 11px 12px 9px !important;
+      border-bottom: 1px solid var(--borderColor-muted, #d8dee4) !important;
+      flex-shrink: 0 !important;
+    }
+    .ghtk-pop-title {
+      flex: 1 !important;
+      min-width: 0 !important;
+      font-size: 12.5px !important;
+      font-weight: 600 !important;
+      overflow: hidden !important;
+      text-overflow: ellipsis !important;
+      white-space: nowrap !important;
+    }
+    .ghtk-pop-close {
+      width: 24px !important;
+      height: 24px !important;
+      font-size: 13px !important;
+      flex-shrink: 0 !important;
+    }
+    .ghtk-pop-body {
+      padding: 11px 12px !important;
+      overflow-y: auto !important;
+      min-height: 0 !important;
+      flex: 1 !important;
+    }
+    .ghtk-pop-body::-webkit-scrollbar { width: 6px !important; }
+    .ghtk-pop-body::-webkit-scrollbar-thumb {
+      background: var(--borderColor-default, #d0d7de) !important;
+      border-radius: 3px !important;
+    }
+    .ghtk-pop-desc {
+      font-size: 11.5px !important;
+      line-height: 1.6 !important;
+      color: var(--fgColor-default, #1f2328) !important;
+      margin-bottom: 10px !important;
+      word-break: break-word !important;
+      overflow-wrap: anywhere !important;
+    }
+    .ghtk-pop-grid {
+      display: grid !important;
+      grid-template-columns: 1fr 1fr !important;
+      gap: 7px 10px !important;
+      margin-bottom: 10px !important;
+    }
+    .ghtk-pop-cell { min-width: 0 !important; }
+    .ghtk-pop-k {
+      font-size: 9.5px !important;
+      color: var(--fgColor-muted, #59636e) !important;
+      text-transform: uppercase !important;
+      letter-spacing: .4px !important;
+      margin-bottom: 1px !important;
+    }
+    .ghtk-pop-v {
+      font-size: 11px !important;
+      font-weight: 600 !important;
+      color: var(--fgColor-default, #1f2328) !important;
+      overflow: hidden !important;
+      text-overflow: ellipsis !important;
+      white-space: nowrap !important;
+    }
+    .ghtk-pop-sec {
+      font-size: 9.5px !important;
+      font-weight: 600 !important;
+      color: var(--fgColor-muted, #59636e) !important;
+      letter-spacing: .5px !important;
+      text-transform: uppercase !important;
+      margin-bottom: 5px !important;
+    }
+    .ghtk-pop-topics {
+      display: flex !important;
+      flex-wrap: wrap !important;
+      gap: 4px !important;
+      margin-bottom: 10px !important;
+    }
+    .ghtk-pop-home {
+      font-size: 11px !important;
+      margin-bottom: 2px !important;
+    }
+    .ghtk-pop-home a {
+      color: #0969da !important;
+      text-decoration: none !important;
+      word-break: break-all !important;
+    }
+    .ghtk-pop-home a:hover { text-decoration: underline !important; }
+    .ghtk-pop-note {
+      font-size: 10.5px !important;
+      color: #9a6700 !important;
+      margin-top: 6px !important;
+    }
+    .ghtk-pop-foot {
+      display: flex !important;
+      gap: 6px !important;
+      padding: 9px 12px !important;
+      border-top: 1px solid var(--borderColor-muted, #d8dee4) !important;
+      background: var(--bgColor-muted, #f6f8fa) !important;
+      flex-shrink: 0 !important;
+    }
+    .ghtk-pop-foot .ghtk-btn {
+      flex: 1 !important;
+      min-width: 0 !important;
+      height: 28px !important;
+      font-size: 11px !important;
+    }
 
     .ghtk-toast {
       position: fixed !important;

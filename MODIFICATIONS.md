@@ -42,12 +42,14 @@
 
 #### 布局与溢出（强制）
 - 面板内所有新增区块必须考虑溢出：文本用 `-webkit-line-clamp` 或 `text-overflow: ellipsis` 截断，长内容区自身滚动，**禁止撑破面板或挤压相邻区域**。
-- 新增区块若参与纵向 flex 布局，必须明确 `flex-shrink`，必要时设 `max-height` + `overflow-y: auto`（参考 `.ghtk-about` 的 `max-height: 42%`）。
-- 可展开的长内容必须提供「展开 / 收起」入口（参考 `.ghtk-about-more`）。
+- **信息展示区块必须固定高度**（`height` + `flex: 0 0 <值>`），加载中 / 无数据 / 有数据三种状态高度一致，禁止因内容多少导致面板抖动。参考 `.ghtk-about` 的 88px。
+- **溢出内容必须用气泡查看**，不要在固定区块内做「展开/收起」导致布局位移。气泡统一走 `src/core/popover.ts`，宽度自适应不超过面板边界，内部滚动，点外部/Esc 关闭。
+- **底部操作区必须统一形态**：同排按钮全部为文字按钮、30px 高、`flex: 1` 等宽，禁止在同一区域混用图标按钮与文字按钮。危险操作靠 `.ghtk-btn.danger` 区分，不靠形变。
 
 #### 数据与安全
+- **接口数据必须走缓存层**（`src/core/cache.ts`）：禁止直接裸调 `GM_xmlhttpRequest` 后把结果只放内存。新增接口按变化频率设定 TTL，命中过期数据时先渲染旧值再后台刷新（stale-while-revalidate）。
 - 所有注入到 `innerHTML` 的仓库名、描述、topics 等外部数据必须经 `escapeHtml()` 转义。
-- API 调用统一走 `src/core/github-api.ts`，带内存缓存（`fetchRepoAbout` / `fetchRepoInfo` / `checkHasForked` 均为 10 分钟 TTL），禁止在插件内直连 `GM_xmlhttpRequest`。
+- API 调用统一走 `src/core/github-api.ts`，带内存缓存（`loadRepoAbout` / `fetchRepoInfo` / `checkHasForked`），禁止在插件内直连 `GM_xmlhttpRequest`。
 
 #### 架构约定
 - 插件通过 `panelTab`（`{ id, label, render, mount }`）贡献面板 Tab，主程序只负责组装。新增插件在 `src/plugins/index.ts` 注册。
@@ -106,6 +108,17 @@
 - **用户展示区分**：详情头部拆为「上游所有者」与「当前用户」两项，避免同名混淆；左栏当前仓库相关项加蓝点标记，默认选中优先级 = 当前仓库是上游 > 当前仓库是下游 > 第一条。
 - **版本**：`package.json` / `vite.config.ts` / `TOOLKIT_VERSION` 三处同步至 2.5.3。
 - **git**：根 `.gitignore` 与子目录 `.gitignore` 均移除 `dist/`，构建产物纳入版本控制。
+
+#### v2.6.0 接口缓存持久化 + about 固定区块 + 弹窗跟随
+
+- **接口缓存三层化**（新增 `src/core/cache.ts`）：L1 内存 Map → L2 `GM_setValue` 持久层 → L3 网络。about 24h、repoInfo 6h TTL；命中过期数据时先渲染旧值再后台静默刷新（stale-while-revalidate），用户无需等待「正在加载」。容量上限 200 条按 LRU 淘汰，单条超 100KB 不写持久层，写入配额失败静默降级为纯内存。油猴权限新增 `GM_deleteValue`。
+- **about 区块固定 88px**（`.ghtk-about`）：`height: 88px` + `flex: 0 0 88px`，加载中/无简介/正常三种状态完全等高，不再撑开挤压下游列表。内部为描述 2 行截断 → 元信息单行 → topics 单行（3 个 + `+N`）。
+- **溢出内容走气泡**（新增 `src/core/popover.ts`）：about 右上角「↗」触发 `showAboutPopover()`，固定宽 328px（自适应不超过面板边界）、最大高 440px 内部滚动，展示完整描述/6 项元信息/全部 topics/主页，底部「打开仓库 / 复制链接」。锚定触发按钮，空间不足自动翻转贴边；点外部/Esc/再点按钮关闭。
+- **弹窗跟随面板**（`Modal`）：遮罩定位到 `.ghtk-panel` 区域内（`.in-panel`），只覆盖面板不全屏压暗；`resize` 时重新对齐；新增 `danger: true` 选项（红色实心确认按钮）供删除类操作使用。
+- **底部操作区统一**：原「两行文字按钮 + 一行图标按钮」改为两排文字按钮（绑定下游｜手动绑定 / 打开上游｜复制链接｜删除），全部 30px 高、同排等宽（`flex: 1`），删除用 danger 样式；移除废弃的 `ICONS.copy` / `ICONS.open` 与 `.ghtk-foot-icons` 样式。
+- **「我的 Fork」标记归位**：从上游标题移到对应的下游行（owner 等于当前用户时标记）；标题仅在「当前浏览的仓库即该上游」时标「当前仓库」。
+- **软导航**：站内链接加 `data-ghtk-nav`，新增 `src/core/navigate.ts` 走 `Turbo.visit()`；`page:change` 时面板重建保持打开，FAB 在 turbo 事件后补回。
+- **设计约束新增**（见上方「规则」）：接口数据必须走缓存层；固定高度区块 + 气泡查看溢出；底部操作区必须同排等宽文字按钮，禁止混用图标按钮。
 
 #### Fork 入口改为下拉菜单，修复按钮文字溢出（1.4.0 → 1.4.1）
 

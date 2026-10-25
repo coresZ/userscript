@@ -1,5 +1,5 @@
 import { DOMHelper } from './dom-helper';
-import { Logger } from './logger';
+import { cachedFetch } from './cache';
 
 export interface RepoInfo {
   full_name: string;
@@ -99,13 +99,34 @@ const forkCache = new Map<string, { url: string | null; at: number }>();
 const FORK_CACHE_TTL = 10 * 60 * 1000;
 
 const aboutCache = new Map<string, { data: RepoAbout | null; at: number }>();
-const ABOUT_CACHE_TTL = 10 * 60 * 1000;
+/** about 数据变化慢，持久缓存 24 小时 */
+const ABOUT_TTL = 24 * 60 * 60 * 1000;
 
-/** 拉取仓库 about 信息（description/topics/语言/星标等），带缓存 */
+/**
+ * 读取 about：内存 → 持久层 → 网络。
+ * 命中过期数据时先回调旧值（不显示加载态），后台静默刷新后再回调新值。
+ */
+export function loadRepoAbout(
+  owner: string,
+  repo: string,
+  onData: (data: RepoAbout | null) => void
+): void {
+  const key = `about:${owner}/${repo}`.toLowerCase();
+  cachedFetch<RepoAbout>(
+    { key, ttl: ABOUT_TTL },
+    () => fetchRepoAbout(owner, repo),
+    (data) => {
+      if (data) aboutCache.set(key, { data, at: Date.now() });
+      onData(data);
+    }
+  );
+}
+
+/** 拉取仓库 about 信息（description/topics/语言/星标等），带持久化缓存 */
 export function fetchRepoAbout(owner: string, repo: string): Promise<RepoAbout | null> {
-  const key = `${owner}/${repo}`.toLowerCase();
+  const key = `about:${owner}/${repo}`.toLowerCase();
   const cached = aboutCache.get(key);
-  if (cached && Date.now() - cached.at < ABOUT_CACHE_TTL) {
+  if (cached && Date.now() - cached.at < ABOUT_TTL) {
     return Promise.resolve(cached.data);
   }
 

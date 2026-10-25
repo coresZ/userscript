@@ -1,6 +1,7 @@
 import type { Binding, PageContext, Plugin, PluginContext } from '../types';
 import { Modal } from '../core/modal';
-import { checkHasForked, fetchRepoAbout, fetchRepoInfo, getCurrentUser } from '../core/github-api';
+import { checkHasForked, fetchRepoInfo, getCurrentUser, loadRepoAbout } from '../core/github-api';
+import { showAboutPopover } from '../core/popover';
 import type { RepoAbout } from '../core/github-api';
 
 const BIND_STORAGE_KEY = 'upstream-downstream-bindings';
@@ -16,9 +17,7 @@ function saveBindings(list: Binding[]): void {
 const ICONS = {
   search: `<svg viewBox="0 0 16 16"><path d="M10.68 11.74a6 6 0 0 1-7.922-8.982 6 6 0 0 1 8.982 7.922l3.04 3.04a.749.749 0 0 1-.326 1.275.749.749 0 0 1-.734-.215ZM11.5 7a4.499 4.499 0 1 0-8.997 0A4.499 4.499 0 0 0 11.5 7Z"/></svg>`,
   plus: `<svg viewBox="0 0 16 16"><path d="M7.75 2a.75.75 0 0 1 .75.75V7h4.25a.75.75 0 0 1 0 1.5H8.5v4.25a.75.75 0 0 1-1.5 0V8.5H2.75a.75.75 0 0 1 0-1.5H7V2.75A.75.75 0 0 1 7.75 2Z"/></svg>`,
-  copy: `<svg viewBox="0 0 16 16"><path d="M0 6.75C0 5.784.784 5 1.75 5h1.5a.75.75 0 0 1 0 1.5h-1.5a.25.25 0 0 0-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 0 0 .25-.25v-1.5a.75.75 0 0 1 1.5 0v1.5A1.75 1.75 0 0 1 9.25 16h-7.5A1.75 1.75 0 0 1 0 14.25ZM5 1.75C5 .784 5.784 0 6.75 0h7.5C15.216 0 16 .784 16 1.75v7.5A1.75 1.75 0 0 1 14.25 11h-7.5A1.75 1.75 0 0 1 5 9.25Zm1.75-.25a.25.25 0 0 0-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 0 0 .25-.25v-7.5a.25.25 0 0 0-.25-.25Z"/></svg>`,
   del: `<svg viewBox="0 0 16 16"><path d="M3.72 3.72a.75.75 0 0 1 1.06 0L8 6.94l3.22-3.22a.75.75 0 1 1 1.06 1.06L9.06 8l3.22 3.22a.75.75 0 1 1-1.06 1.06L8 9.06l-3.22 3.22a.75.75 0 0 1-1.06-1.06L6.94 8 3.72 4.78a.75.75 0 0 1 0-1.06Z"/></svg>`,
-  open: `<svg viewBox="0 0 16 16"><path d="M3.75 2h3.5a.75.75 0 0 1 0 1.5h-3.5a.25.25 0 0 0-.25.25v8.5c0 .138.112.25.25.25h8.5a.25.25 0 0 0 .25-.25v-3.5a.75.75 0 0 1 1.5 0v3.5A1.75 1.75 0 0 1 12.25 14h-8.5A1.75 1.75 0 0 1 2 12.25v-8.5C2 2.784 2.784 2 3.75 2Zm6.854-1h4.146a.25.25 0 0 1 .25.25v4.146a.25.25 0 0 1-.427.177L13.03 4.03 9.28 7.78a.75.75 0 0 1-1.06-1.06l3.75-3.75-1.543-1.543A.25.25 0 0 1 10.604 1Z"/></svg>`,
 };
 
 interface UpstreamStatus {
@@ -39,8 +38,6 @@ interface ViewState {
   draft: string;
   /** 已加载的上游 about（按 owner/repo 小写缓存） */
   about: Map<string, RepoAbout | null>;
-  /** about 描述是否展开 */
-  aboutExpanded: boolean;
 }
 
 /** 数字紧凑格式：1234 → 1.2k */
@@ -76,30 +73,36 @@ const LANG_COLORS: Record<string, string> = {
 };
 
 /**
- * 渲染上游 about 区块。
- * 描述最多 3 行（超出省略），可展开；topics 也限制高度，避免撑破面板。
+ * 渲染上游 about 区块（固定 88px 高）。
+ * 描述 2 行截断、元信息单行、topics 单行，溢出内容通过右上角按钮开气泡查看。
  */
-function renderAbout(about: RepoAbout | null | undefined, full: string, expanded: boolean): string {
+function renderAbout(
+  about: RepoAbout | null | undefined,
+  full: string,
+  pageType: string
+): string {
+  const expandIcon = `<svg viewBox="0 0 16 16"><path d="M3.75 2h3.5a.75.75 0 0 1 0 1.5h-3.5a.25.25 0 0 0-.25.25v8.5c0 .138.112.25.25.25h8.5a.25.25 0 0 0 .25-.25v-3.5a.75.75 0 0 1 1.5 0v3.5A1.75 1.75 0 0 1 12.25 14h-8.5A1.75 1.75 0 0 1 2 12.25v-8.5C2 2.784 2.784 2 3.75 2Zm6.854-1h4.146a.25.25 0 0 1 .25.25v4.146a.25.25 0 0 1-.427.177L13.03 4.03 9.28 7.78a.75.75 0 0 1-1.06-1.06l3.75-3.75-1.543-1.543A.25.25 0 0 1 10.604 1Z"/></svg>`;
+
   if (about === undefined) {
-    // 尚未加载
     return `
       <div class="ghtk-about">
-        <div class="ghtk-about-desc muted">正在加载仓库简介…</div>
+        <div class="ghtk-about-top"><div class="ghtk-about-desc muted">正在加载仓库简介…</div></div>
+        <div class="ghtk-about-meta"></div>
+        <div class="ghtk-topics"></div>
       </div>
     `;
   }
   if (about === null) {
-    return '';
+    return `
+      <div class="ghtk-about">
+        <div class="ghtk-about-top"><div class="ghtk-about-desc muted">无仓库信息</div></div>
+        <div class="ghtk-about-meta"></div>
+        <div class="ghtk-topics"></div>
+      </div>
+    `;
   }
 
   const desc = about.description?.trim() || '';
-  // 粗估是否需要「展开」：超过 3 行（约 70 个中文字符 / 140 个西文字符）
-  const needToggle = desc.length > 70 || desc.split('\n').length > 3;
-  const descHtml = desc
-    ? `<div class="ghtk-about-desc">${escapeHtml(desc)}</div>
-       ${needToggle ? `<button class="ghtk-about-more" id="ghtk-about-more" type="button">${expanded ? '收起' : '展开全部'}</button>` : ''}`
-    : `<div class="ghtk-about-desc muted">暂无简介</div>`;
-
   const metaItems: string[] = [];
   if (about.language) {
     const color = LANG_COLORS[about.language] || '#8b949e';
@@ -118,36 +121,27 @@ function renderAbout(about: RepoAbout | null | undefined, full: string, expanded
     );
   }
   if (about.license) {
-    metaItems.push(
-      `<span class="item"><svg viewBox="0 0 16 16"><path d="M8.75.75V2h.985c.304 0 .603.08.867.231l1.29.736c.038.022.08.033.124.033h2.234a.75.75 0 0 1 0 1.5h-.427l2.111 4.692a.75.75 0 0 1-.154.838l-.53-.53.529.531-.001.002-.002.002-.006.006-.006.005-.01.01-.045.04c-.21.176-.441.327-.686.45C14.556 10.78 13.88 11 13 11a4.498 4.498 0 0 1-2.023-.454 3.544 3.544 0 0 1-.686-.45l-.045-.04-.016-.015-.002-.002-.001-.002.528-.53-.528.53-.154-.837 2.11-4.692h-.428a.75.75 0 0 1 0-1.5h2.234a.25.25 0 0 0 .124-.033l1.29-.735c.264-.151.563-.231.867-.231h.985V.75a.75.75 0 0 1 1.5 0Zm-1.5 0a.75.75 0 0 1 1.5 0Z"/></svg><span>${escapeHtml(about.license)}</span></span>`
-    );
-  }
-  if (about.homepage) {
-    const home = about.homepage.replace(/^https?:\/\//, '');
-    metaItems.push(
-      `<span class="item"><svg viewBox="0 0 16 16"><path d="M3.75 2h3.5a.75.75 0 0 1 0 1.5h-3.5a.25.25 0 0 0-.25.25v8.5c0 .138.112.25.25.25h8.5a.25.25 0 0 0 .25-.25v-3.5a.75.75 0 0 1 1.5 0v3.5A1.75 1.75 0 0 1 12.25 14h-8.5A1.75 1.75 0 0 1 2 12.25v-8.5C2 2.784 2.784 2 3.75 2Zm6.854-1h4.146a.25.25 0 0 1 .25.25v4.146a.25.25 0 0 1-.427.177L13.03 4.03 9.28 7.78a.75.75 0 0 1-1.06-1.06l3.75-3.75-1.543-1.543A.25.25 0 0 1 10.604 1Z"/></svg><a href="${escapeHtml(about.homepage)}" target="_blank" rel="noreferrer" title="${escapeHtml(about.homepage)}">${escapeHtml(home)}</a></span>`
-    );
-  }
-  if (about.archived) {
-    metaItems.push(`<span class="item" style="color:#9a6700">已归档</span>`);
+    metaItems.push(`<span class="item"><span>${escapeHtml(about.license)}</span></span>`);
   }
 
-  const topics = about.topics.length
-    ? `<div class="ghtk-topics">${about.topics
-        .slice(0, expanded ? about.topics.length : 6)
+  const showTopics = about.topics.slice(0, 3);
+  const restTopics = about.topics.length - showTopics.length;
+  const topicsHtml = about.topics.length
+    ? `<div class="ghtk-topics">${showTopics
         .map((t) => `<span class="ghtk-topic">${escapeHtml(t)}</span>`)
         .join('')}${
-        !expanded && about.topics.length > 6
-          ? `<span class="ghtk-topic">+${about.topics.length - 6}</span>`
-          : ''
+        restTopics > 0 ? `<span class="ghtk-topic" style="color:#59636e;background:#f6f8fa;border-color:#d0d7de">+${restTopics}</span>` : ''
       }</div>`
-    : '';
+    : '<div class="ghtk-topics"></div>';
 
   return `
-    <div class="ghtk-about ${expanded ? 'expanded' : ''}">
-      ${descHtml}
-      ${metaItems.length ? `<div class="ghtk-about-meta">${metaItems.join('')}</div>` : ''}
-      ${topics}
+    <div class="ghtk-about">
+      <div class="ghtk-about-top">
+        <div class="ghtk-about-desc">${desc ? escapeHtml(desc) : '<span style="font-style:italic">暂无简介</span>'}</div>
+        <button class="ghtk-about-expand" id="ghtk-about-detail" type="button" data-ghtk-popover-trigger title="查看完整信息">${expandIcon}</button>
+      </div>
+      <div class="ghtk-about-meta">${metaItems.join('')}</div>
+      ${topicsHtml}
     </div>
   `;
 }
@@ -203,7 +197,6 @@ export const UpstreamBindPlugin: Plugin = {
         status: { text: '' },
         draft: '',
         about: new Map(),
-        aboutExpanded: false,
       };
 
       const railList = root.querySelector<HTMLElement>('#ghtk-rail-list');
@@ -320,20 +313,29 @@ export const UpstreamBindPlugin: Plugin = {
         const downs = b.downstreams || [];
         const full = `${b.owner}/${b.repo}`;
         const about = state.about.get(full.toLowerCase());
-        const aboutHtml = renderAbout(about, full, state.aboutExpanded);
+        const aboutHtml = renderAbout(about, full, page.type);
         const ownerText = `${b.owner}`;
 
         const rows = downs.length
           ? downs
-              .map(
-                (d) => `
+              .map((d) => {
+                // 该下游是否就是当前登录用户的 fork（或当前正在浏览的仓库）
+                const isMine = !!currentUser && d.toLowerCase().startsWith(`${currentUser.toLowerCase()}/`);
+                const isCurrentPage = !!currentRepo && d.toLowerCase() === currentRepo.toLowerCase();
+                const tag = isCurrentPage
+                  ? '<span class="ghtk-chip">当前仓库</span>'
+                  : isMine
+                    ? '<span class="ghtk-chip">我的 Fork</span>'
+                    : '';
+                return `
             <div class="ghtk-drow">
               <span class="ghtk-drow-dash">└</span>
               <a href="https://github.com/${d}" data-ghtk-nav title="打开下游 ${d}">${d}</a>
+              ${tag}
               <button class="ghtk-icon-btn ghtk-drow-rm" data-remove="${d}" type="button" title="移除下游">${ICONS.del}</button>
             </div>
-          `
-              )
+          `;
+              })
               .join('')
           : `<div class="ghtk-dempty">无下游</div>`;
 
@@ -341,13 +343,7 @@ export const UpstreamBindPlugin: Plugin = {
           <div class="ghtk-detail-head">
             <div class="ghtk-detail-title">
               <span class="name" title="${full}">${full}</span>
-              ${
-                isUpstreamOfCurrent(b)
-                  ? '<span class="ghtk-chip">当前仓库</span>'
-                  : isDownstreamOfCurrent(b)
-                    ? '<span class="ghtk-chip">我的 Fork</span>'
-                    : ''
-              }
+              ${isUpstreamOfCurrent(b) ? '<span class="ghtk-chip">当前仓库</span>' : ''}
             </div>
             <div class="ghtk-detail-sub">
               <span>上游所有者 <b>${ownerText}</b></span>
@@ -369,21 +365,44 @@ export const UpstreamBindPlugin: Plugin = {
           <div class="ghtk-detail-foot">
             <div class="ghtk-foot-main">
               <button class="ghtk-btn primary" id="ghtk-auto-bind" type="button">绑定下游</button>
-              <a class="ghtk-btn" href="https://github.com/${full}" data-ghtk-nav>打开上游</a>
+              <button class="ghtk-btn" id="ghtk-manual-bind" type="button">手动绑定</button>
             </div>
-            <div class="ghtk-foot-icons">
-              <button class="ghtk-icon-btn" id="ghtk-manual-bind" type="button" title="手动绑定下游">${ICONS.plus}</button>
-              <button class="ghtk-icon-btn" id="ghtk-copy-up" type="button" title="复制上游链接">${ICONS.copy}</button>
-              <div class="ghtk-foot-spacer"></div>
-              <button class="ghtk-icon-btn danger" id="ghtk-remove-up" type="button" title="删除绑定">${ICONS.del}</button>
+            <div class="ghtk-foot-main ghtk-foot-second">
+              <a class="ghtk-btn" href="https://github.com/${full}" data-ghtk-nav>打开上游</a>
+              <button class="ghtk-btn" id="ghtk-copy-up" type="button">复制链接</button>
+              <button class="ghtk-btn danger" id="ghtk-remove-up" type="button">删除</button>
             </div>
           </div>
         `;
 
-        // about 描述展开/收起
-        detail.querySelector('#ghtk-about-more')?.addEventListener('click', () => {
-          state.aboutExpanded = !state.aboutExpanded;
-          renderDetail();
+        // about 完整信息气泡
+        detail.querySelector('#ghtk-about-detail')?.addEventListener('click', (ev) => {
+          ev.preventDefault();
+          ev.stopPropagation();
+          const data = state.about.get(full.toLowerCase());
+          if (!data) {
+            // 数据还没回来（或请求失败），给出反馈而不是静默无响应
+            ctx.ui.toast(state.about.has(full.toLowerCase()) ? '无仓库信息' : '正在加载…');
+            return;
+          }
+          const anchor = ev.currentTarget as HTMLElement;
+          showAboutPopover({
+            about: data,
+            anchor,
+            pageType: page.type,
+            actions: [
+              { label: '打开仓库', href: `https://github.com/${full}` },
+              {
+                label: '复制链接',
+                onClick: () => {
+                  navigator.clipboard
+                    .writeText(`https://github.com/${full}`)
+                    .then(() => ctx.ui.toast('已复制'))
+                    .catch(() => ctx.ui.toast('复制失败'));
+                },
+              },
+            ],
+          });
         });
 
         // 移除下游（二次确认）
@@ -497,16 +516,16 @@ export const UpstreamBindPlugin: Plugin = {
           ctx.ui.toast('已删除');
         });
 
-        // 按需加载 about（缓存命中则跳过）
+        // 按需加载 about（命中持久缓存则立即渲染，不显示加载态）
         loadAbout(b);
       };
 
-      /** 拉取并缓存 about，然后局部刷新详情 */
+      /** 读取 about：内存 → GM 持久缓存 → 网络，过期时先渲染旧值再后台刷新 */
       const loadAbout = (b: Binding) => {
         const key = `${b.owner}/${b.repo}`.toLowerCase();
         if (state.about.has(key)) return;
 
-        fetchRepoAbout(b.owner, b.repo).then((data) => {
+        loadRepoAbout(b.owner, b.repo, (data) => {
           state.about.set(key, data);
           // 仅当当前选中的还是这一条时才刷新，避免切走后又闪回
           const cur = loadBindings()[state.selected];
