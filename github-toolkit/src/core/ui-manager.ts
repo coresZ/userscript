@@ -3,6 +3,9 @@ import { Logger } from './logger';
 
 const FAB_ICON = `<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M15 2.75a.75.75 0 0 1-.75.75h-4a.75.75 0 0 1 0-1.5h4a.75.75 0 0 1 .75.75Zm-8.5.75v1.25a.75.75 0 0 0 1.5 0v-4a.75.75 0 0 0-1.5 0V2H1.75a.75.75 0 0 0 0 1.5H6.5Zm1.25 5.5a.75.75 0 0 0 0-1.5h-6a.75.75 0 0 0 0 1.5h6ZM15 8a.75.75 0 0 1-.75.75H11.5V10a.75.75 0 1 1-1.5 0V6a.75.75 0 0 1 1.5 0v1.25h2.75A.75.75 0 0 1 15 8Zm-9 5.25v-2a.75.75 0 0 0-1.5 0v1.25H1.75a.75.75 0 1 0 0 1.5H4.5v1.25a.75.75 0 0 0 1.5 0v-2Zm9 2v-2.25a.75.75 0 0 0-1.5 0V15h-4a.75.75 0 0 0 0 1.5h4a.75.75 0 0 0 .75-.75v-1.5Z"/></svg>`;
 
+/** 云图标（stroke 风格，currentColor 描边） */
+const CLOUD_ICON = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z"/></svg>`;
+
 const FAB_POS_KEY = 'fab-position';
 const FAB_SIZE = 48;
 const FAB_MARGIN = 8;
@@ -21,6 +24,8 @@ export class UIManager {
   private suppressClick = false;
   /** 由主程序注入：点击悬浮球时切换面板 */
   onFabToggle: () => void = () => {};
+  /** 由主程序注入：点击标题栏云图标时打开云端备份面板 */
+  onCloudClick: () => void = () => {};
 
   createFab(): void {
     if (this.fab && document.body.contains(this.fab)) return;
@@ -189,7 +194,10 @@ export class UIManager {
     this.panel.innerHTML = `
       <header>
         <span class="title">${title}</span>
-        <button class="close-btn" type="button" title="关闭">✕</button>
+        <span class="head-actions">
+          <button class="cloud-btn" type="button" title="云端备份" aria-label="云端备份">${CLOUD_ICON}</button>
+          <button class="close-btn" type="button" title="关闭">✕</button>
+        </span>
       </header>
       <div class="body">${contentHtml || ''}</div>
     `;
@@ -206,6 +214,12 @@ export class UIManager {
     this.panel.querySelector('.close-btn')!.addEventListener('click', (e) => {
       e.stopPropagation();
       this.hidePanel();
+    });
+
+    this.onCloudClick = this.onCloudClick || (() => {});
+    this.panel.querySelector('.cloud-btn')!.addEventListener('click', (e) => {
+      e.stopPropagation();
+      this.onCloudClick();
     });
 
     this.enableDrag(this.panel.querySelector('header'));

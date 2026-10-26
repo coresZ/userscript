@@ -5,9 +5,10 @@ import { PageRouter } from './core/router';
 import { PluginManager } from './core/plugin-manager';
 import { Logger } from './core/logger';
 import { bindSoftNav } from './core/navigate';
+import { openCloudPanel } from './core/cloud';
 import { builtinPlugins, DEFAULT_ENABLED } from './plugins';
 
-const TOOLKIT_VERSION = '2.6.2';
+const TOOLKIT_VERSION = '2.7.1';
 
 // ---------- 核心组装 ----------
 const eventBus = new EventBus();
@@ -116,26 +117,27 @@ function renderPluginsList(): void {
   const plugins = pluginManager.getAll();
   container.innerHTML = plugins
     .map((p) => {
-      const checked = pluginManager.isEnabled(p.id) ? 'checked' : '';
+      const on = pluginManager.isEnabled(p.id);
       return `
         <div class="ghtk-plugin-item">
           <div style="min-width:0;">
             <strong style="font-size:13px;">${p.name}</strong>
             <div class="desc">${p.description || ''}</div>
           </div>
-          <label style="flex-shrink:0;">
-            <input type="checkbox" data-id="${p.id}" ${checked} style="width:18px;height:18px;cursor:pointer;">
-          </label>
+          <button class="ghtk-switch ${on ? 'on' : ''}" data-id="${p.id}" type="button"
+            role="switch" aria-checked="${on}" title="${on ? '禁用' : '启用'}">
+            <span class="ghtk-switch-knob"></span>
+          </button>
         </div>
       `;
     })
     .join('');
 
-  container.querySelectorAll<HTMLInputElement>('input[type=checkbox][data-id]').forEach((input) => {
-    input.addEventListener('change', async (e) => {
-      const target = e.target as HTMLInputElement;
-      const id = target.dataset.id!;
-      if (target.checked) {
+  container.querySelectorAll<HTMLButtonElement>('.ghtk-switch[data-id]').forEach((sw) => {
+    sw.addEventListener('click', async () => {
+      const id = sw.dataset.id!;
+      const turningOn = !sw.classList.contains('on');
+      if (turningOn) {
         await pluginManager.enable(id);
         if (!enabledList.includes(id)) enabledList.push(id);
       } else {
@@ -143,7 +145,7 @@ function renderPluginsList(): void {
         enabledList = enabledList.filter((x) => x !== id);
       }
       GM_setValue('enabled-plugins', enabledList);
-      ui.toast(target.checked ? '已启用' : '已禁用');
+      ui.toast(turningOn ? '已启用' : '已禁用');
 
       setTimeout(renderPanel, 150);
     });
@@ -157,6 +159,12 @@ ui.onFabToggle = () => {
   } else {
     renderPanel();
   }
+};
+
+// 标题栏云图标 → 打开 WebDAV 云端备份面板
+ui.onCloudClick = () => {
+  const ok = openCloudPanel();
+  if (!ok) ui.toast('云端组件未加载');
 };
 
 GM_registerMenuCommand('打开 GitHub Toolkit 面板', renderPanel);

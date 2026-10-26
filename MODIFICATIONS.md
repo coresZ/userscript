@@ -112,6 +112,21 @@
 - **版本**：`package.json` / `vite.config.ts` / `TOOLKIT_VERSION` 三处同步至 2.5.3。
 - **git**：根 `.gitignore` 与子目录 `.gitignore` 均移除 `dist/`，构建产物纳入版本控制。
 
+#### v2.7.1 插件开关化 + 云图标更换
+
+- **插件启用/禁用改为开关控件**：原生 checkbox 视觉上像复选框而非开关，改为 GitHub 风格 `.ghtk-switch`（40×22、圆角 11px、knob 16px、开启蓝底 knob 右移），`role="switch"` + `aria-checked`，点击后 toast 与持久化逻辑不变。
+- **云图标更换**：面板标题栏的云端入口换成 stroke 风格云朵（15×15，`stroke: currentColor` + `fill: none`），不再用 fill 型 octicon；`.cloud-btn svg` 样式相应调整（不设 fill）。
+
+#### v2.7.0 接入 WebDAV 云端备份（webdev-component）
+
+- **引入组件库**：`@require https://update.greasyfork.org/scripts/593538/1973794/webdev-component.js`（cores 的 WebdevComponent v1.4.1，MPL）。`@connect` 新增 `*`（WebDAV 服务器域名因用户而异，只能通配）。
+- **新增 `src/core/cloud.ts`**：`createWebdev` 封装，key `ghtk-webdev-v1`，默认备份文件 `github-toolkit-backup.json`，storage 走 GM 适配。
+  - `exportPayload()` 只收集四个备份键：`upstream-downstream-bindings` / `enabled-plugins` / `accel-base-url` / `ego-identity`+`ego-protocol`，payload 带 `app: 'github-toolkit'` 标识。
+  - `importPayload()` 校验 `app` 标识后逐项校验类型并回写，返回统计文案供组件 UI 展示；不认识的文件直接报「不是 GitHub Toolkit 的备份文件」。
+  - **不备份** API 缓存（`ghtk-cache:*`，恢复时自动重拉）与 FAB 位置（本机偏好）。
+- **云图标**：面板标题栏 ✕ 左侧新增 cloud 图标按钮（30×30，与关闭按钮同规格），点击 `webdev.openPanel()` 打开组件自带设置面板；组件未加载时 toast「云端组件未加载」。
+- **约束提醒**（组件蓝皮书）：经 `@require` 引入时库头 `@grant`/`@connect` 不生效，权限必须写在主脚本——已在 `vite.config.ts` 维护。
+
 #### v2.6.2 显示上游更新时间与最后提交时间
 
 - **更新时间**：about 元信息行新增时钟图标 + 相对时间项（数据来自仓库 API 的 `pushed_at`，随 about 24h 缓存），悬停显示完整日期。

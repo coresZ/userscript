@@ -152,6 +152,38 @@ const CSS = `
       align-items: center !important;
       justify-content: center !important;
     }
+    /* 云端备份入口：与关闭按钮组成一组，紧贴右侧 */
+    .ghtk-panel .head-actions {
+      display: flex !important;
+      align-items: center !important;
+      gap: 2px !important;
+      flex-shrink: 0 !important;
+    }
+    .ghtk-panel .cloud-btn {
+      width: var(--ghtk-ctl-h) !important;
+      height: var(--ghtk-ctl-h) !important;
+      border: none !important;
+      background: none !important;
+      border-radius: var(--ghtk-ctl-radius) !important;
+      cursor: pointer !important;
+      color: var(--fgColor-muted, #59636e) !important;
+      display: flex !important;
+      align-items: center !important;
+      justify-content: center !important;
+      padding: 0 !important;
+      margin: 0 !important;
+    }
+    .ghtk-panel .cloud-btn svg {
+      width: 15px !important;
+      height: 15px !important;
+      /* stroke 风格图标：描边取 currentColor，不设 fill */
+      fill: none !important;
+      stroke: currentColor !important;
+    }
+    .ghtk-panel .cloud-btn:hover {
+      background: var(--bgColor-neutral-muted, #818b981f) !important;
+      color: #0969da !important;
+    }
     .ghtk-panel .close-btn:hover {
       background: var(--bgColor-neutral-muted, #818b981f) !important;
       color: var(--fgColor-default, #1f2328) !important;
@@ -869,6 +901,38 @@ const CSS = `
       color: var(--fgColor-muted, #59636e) !important;
       margin-top: 3px !important;
       line-height: 1.4 !important;
+    }
+    /* 启用/禁用开关：GitHub 风格 */
+    .ghtk-switch {
+      flex-shrink: 0 !important;
+      width: 40px !important;
+      height: 22px !important;
+      border: 1px solid var(--borderColor-default, #d0d7de) !important;
+      border-radius: 11px !important;
+      background: var(--bgColor-muted, #f6f8fa) !important;
+      cursor: pointer !important;
+      position: relative !important;
+      padding: 0 !important;
+      transition: background .15s, border-color .15s !important;
+      box-sizing: border-box !important;
+    }
+    .ghtk-switch-knob {
+      position: absolute !important;
+      top: 2px !important;
+      left: 2px !important;
+      width: 16px !important;
+      height: 16px !important;
+      border-radius: 50% !important;
+      background: #fff !important;
+      box-shadow: 0 1px 2px rgba(31,35,40,.2) !important;
+      transition: left .15s ease !important;
+    }
+    .ghtk-switch.on {
+      background: #0969da !important;
+      border-color: #0969da !important;
+    }
+    .ghtk-switch.on .ghtk-switch-knob {
+      left: 20px !important;
     }
 
     .ghtk-modal-mask {

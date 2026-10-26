@@ -1,14 +1,16 @@
 // ==UserScript==
 // @name         GitHub Toolkit
 // @namespace    github-toolkit
-// @version      2.6.2
+// @version      2.7.1
 // @author       Cores
 // @description  高内聚低耦合的 GitHub 模块化工具台（图标操作 + 复制上游链接）
 // @license      MIT
 // @icon         https://github.githubassets.com/favicons/favicon.svg
 // @match        https://github.com/*
 // @match        https://gist.github.com/*
+// @require      https://update.greasyfork.org/scripts/593538/1973794/webdev-component.js
 // @connect      api.github.com
+// @connect      *
 // @grant        GM_addStyle
 // @grant        GM_deleteValue
 // @grant        GM_getValue
@@ -211,6 +213,38 @@
       display: flex !important;
       align-items: center !important;
       justify-content: center !important;
+    }
+    /* 云端备份入口：与关闭按钮组成一组，紧贴右侧 */
+    .ghtk-panel .head-actions {
+      display: flex !important;
+      align-items: center !important;
+      gap: 2px !important;
+      flex-shrink: 0 !important;
+    }
+    .ghtk-panel .cloud-btn {
+      width: var(--ghtk-ctl-h) !important;
+      height: var(--ghtk-ctl-h) !important;
+      border: none !important;
+      background: none !important;
+      border-radius: var(--ghtk-ctl-radius) !important;
+      cursor: pointer !important;
+      color: var(--fgColor-muted, #59636e) !important;
+      display: flex !important;
+      align-items: center !important;
+      justify-content: center !important;
+      padding: 0 !important;
+      margin: 0 !important;
+    }
+    .ghtk-panel .cloud-btn svg {
+      width: 15px !important;
+      height: 15px !important;
+      /* stroke 风格图标：描边取 currentColor，不设 fill */
+      fill: none !important;
+      stroke: currentColor !important;
+    }
+    .ghtk-panel .cloud-btn:hover {
+      background: var(--bgColor-neutral-muted, #818b981f) !important;
+      color: #0969da !important;
     }
     .ghtk-panel .close-btn:hover {
       background: var(--bgColor-neutral-muted, #818b981f) !important;
@@ -930,6 +964,38 @@
       margin-top: 3px !important;
       line-height: 1.4 !important;
     }
+    /* 启用/禁用开关：GitHub 风格 */
+    .ghtk-switch {
+      flex-shrink: 0 !important;
+      width: 40px !important;
+      height: 22px !important;
+      border: 1px solid var(--borderColor-default, #d0d7de) !important;
+      border-radius: 11px !important;
+      background: var(--bgColor-muted, #f6f8fa) !important;
+      cursor: pointer !important;
+      position: relative !important;
+      padding: 0 !important;
+      transition: background .15s, border-color .15s !important;
+      box-sizing: border-box !important;
+    }
+    .ghtk-switch-knob {
+      position: absolute !important;
+      top: 2px !important;
+      left: 2px !important;
+      width: 16px !important;
+      height: 16px !important;
+      border-radius: 50% !important;
+      background: #fff !important;
+      box-shadow: 0 1px 2px rgba(31,35,40,.2) !important;
+      transition: left .15s ease !important;
+    }
+    .ghtk-switch.on {
+      background: #0969da !important;
+      border-color: #0969da !important;
+    }
+    .ghtk-switch.on .ghtk-switch-knob {
+      left: 20px !important;
+    }
 
     .ghtk-modal-mask {
       position: fixed !important;
@@ -1408,6 +1474,7 @@
     return root;
   }
   const FAB_ICON = `<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M15 2.75a.75.75 0 0 1-.75.75h-4a.75.75 0 0 1 0-1.5h4a.75.75 0 0 1 .75.75Zm-8.5.75v1.25a.75.75 0 0 0 1.5 0v-4a.75.75 0 0 0-1.5 0V2H1.75a.75.75 0 0 0 0 1.5H6.5Zm1.25 5.5a.75.75 0 0 0 0-1.5h-6a.75.75 0 0 0 0 1.5h6ZM15 8a.75.75 0 0 1-.75.75H11.5V10a.75.75 0 1 1-1.5 0V6a.75.75 0 0 1 1.5 0v1.25h2.75A.75.75 0 0 1 15 8Zm-9 5.25v-2a.75.75 0 0 0-1.5 0v1.25H1.75a.75.75 0 1 0 0 1.5H4.5v1.25a.75.75 0 0 0 1.5 0v-2Zm9 2v-2.25a.75.75 0 0 0-1.5 0V15h-4a.75.75 0 0 0 0 1.5h4a.75.75 0 0 0 .75-.75v-1.5Z"/></svg>`;
+  const CLOUD_ICON = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z"/></svg>`;
   const FAB_POS_KEY = "fab-position";
   const FAB_SIZE = 48;
   const FAB_MARGIN = 8;
@@ -1419,6 +1486,9 @@
     suppressClick = false;
     /** 由主程序注入：点击悬浮球时切换面板 */
     onFabToggle = () => {
+    };
+    /** 由主程序注入：点击标题栏云图标时打开云端备份面板 */
+    onCloudClick = () => {
     };
     createFab() {
       if (this.fab && document.body.contains(this.fab)) return;
@@ -1562,7 +1632,10 @@
       this.panel.innerHTML = `
       <header>
         <span class="title">${title}</span>
-        <button class="close-btn" type="button" title="关闭">✕</button>
+        <span class="head-actions">
+          <button class="cloud-btn" type="button" title="云端备份" aria-label="云端备份">${CLOUD_ICON}</button>
+          <button class="close-btn" type="button" title="关闭">✕</button>
+        </span>
       </header>
       <div class="body">${contentHtml || ""}</div>
     `;
@@ -1575,6 +1648,12 @@
       this.panel.querySelector(".close-btn").addEventListener("click", (e) => {
         e.stopPropagation();
         this.hidePanel();
+      });
+      this.onCloudClick = this.onCloudClick || (() => {
+      });
+      this.panel.querySelector(".cloud-btn").addEventListener("click", (e) => {
+        e.stopPropagation();
+        this.onCloudClick();
       });
       this.enableDrag(this.panel.querySelector("header"));
       document.addEventListener("keydown", this.onEsc);
@@ -1809,6 +1888,90 @@
     );
   }
   let softNavBound = false;
+  const BACKUP_KEYS = {
+    bindings: "upstream-downstream-bindings",
+    enabledPlugins: "enabled-plugins",
+    accelBase: "accel-base-url",
+    egoIdentity: "ego-identity",
+    egoProtocol: "ego-protocol"
+  };
+  let webdev = null;
+  function ensureWebdev() {
+    if (webdev) return webdev;
+    try {
+      if (typeof WebdevComponent === "undefined" || !WebdevComponent?.createWebdev) {
+        Logger.warn("WebdevComponent 未加载（@require 缺失或网络失败）");
+        return null;
+      }
+      webdev = WebdevComponent.createWebdev({
+        key: "ghtk-webdev-v1",
+        defaultFile: "github-toolkit-backup.json",
+        storage: {
+          get: (k, d) => GM_getValue(k, d),
+          set: (k, v) => GM_setValue(k, v)
+        },
+        // 上传数据源：只收集备份范围内的键
+        exportPayload() {
+          return JSON.stringify({
+            app: "github-toolkit",
+            version: 1,
+            exportedAt: (/* @__PURE__ */ new Date()).toISOString(),
+            data: {
+              bindings: GM_getValue(BACKUP_KEYS.bindings, []),
+              enabledPlugins: GM_getValue(BACKUP_KEYS.enabledPlugins, []),
+              accelBase: GM_getValue(BACKUP_KEYS.accelBase, null),
+              egoIdentity: GM_getValue(BACKUP_KEYS.egoIdentity, ""),
+              egoProtocol: GM_getValue(BACKUP_KEYS.egoProtocol, "ssh")
+            }
+          });
+        },
+        // 下载数据接收器：校验并回写，返回统计供组件 UI 展示
+        importPayload(data) {
+          if (!data || data.app !== "github-toolkit" || !data.data) {
+            throw new Error("不是 GitHub Toolkit 的备份文件");
+          }
+          const d = data.data;
+          const counts = [];
+          if (Array.isArray(d.bindings)) {
+            GM_setValue(BACKUP_KEYS.bindings, d.bindings);
+            counts.push(`绑定 ${d.bindings.length}`);
+          }
+          if (Array.isArray(d.enabledPlugins)) {
+            GM_setValue(BACKUP_KEYS.enabledPlugins, d.enabledPlugins);
+            counts.push(`插件 ${d.enabledPlugins.length}`);
+          }
+          if (typeof d.accelBase === "string" && d.accelBase) {
+            GM_setValue(BACKUP_KEYS.accelBase, d.accelBase);
+            counts.push("加速地址");
+          }
+          if (typeof d.egoIdentity === "string") {
+            GM_setValue(BACKUP_KEYS.egoIdentity, d.egoIdentity);
+            counts.push("ego 身份");
+          }
+          if (d.egoProtocol === "ssh" || d.egoProtocol === "https") {
+            GM_setValue(BACKUP_KEYS.egoProtocol, d.egoProtocol);
+            counts.push("ego 协议");
+          }
+          return { restored: counts.join("、") || "无数据" };
+        }
+      });
+      return webdev;
+    } catch (e) {
+      Logger.error("WebdevComponent 初始化失败:", e);
+      return null;
+    }
+  }
+  function openCloudPanel() {
+    const w = ensureWebdev();
+    if (!w) return false;
+    try {
+      w.openPanel();
+      return true;
+    } catch (e) {
+      Logger.error("打开云端面板失败:", e);
+      return false;
+    }
+  }
   const Modal = {
     show({
       title = "提示",
@@ -3109,7 +3272,7 @@
   }
   const builtinPlugins = [UpstreamBindPlugin, AccelPlugin];
   const DEFAULT_ENABLED = ["upstream-bind", "github-accel"];
-  const TOOLKIT_VERSION = "2.6.2";
+  const TOOLKIT_VERSION = "2.7.1";
   const eventBus = new EventBus();
   const dom = new DOMHelper();
   const ui = new UIManager();
@@ -3183,24 +3346,25 @@
     if (!container) return;
     const plugins = pluginManager.getAll();
     container.innerHTML = plugins.map((p) => {
-      const checked = pluginManager.isEnabled(p.id) ? "checked" : "";
+      const on = pluginManager.isEnabled(p.id);
       return `
         <div class="ghtk-plugin-item">
           <div style="min-width:0;">
             <strong style="font-size:13px;">${p.name}</strong>
             <div class="desc">${p.description || ""}</div>
           </div>
-          <label style="flex-shrink:0;">
-            <input type="checkbox" data-id="${p.id}" ${checked} style="width:18px;height:18px;cursor:pointer;">
-          </label>
+          <button class="ghtk-switch ${on ? "on" : ""}" data-id="${p.id}" type="button"
+            role="switch" aria-checked="${on}" title="${on ? "禁用" : "启用"}">
+            <span class="ghtk-switch-knob"></span>
+          </button>
         </div>
       `;
     }).join("");
-    container.querySelectorAll("input[type=checkbox][data-id]").forEach((input) => {
-      input.addEventListener("change", async (e) => {
-        const target = e.target;
-        const id = target.dataset.id;
-        if (target.checked) {
+    container.querySelectorAll(".ghtk-switch[data-id]").forEach((sw) => {
+      sw.addEventListener("click", async () => {
+        const id = sw.dataset.id;
+        const turningOn = !sw.classList.contains("on");
+        if (turningOn) {
           await pluginManager.enable(id);
           if (!enabledList.includes(id)) enabledList.push(id);
         } else {
@@ -3208,7 +3372,7 @@
           enabledList = enabledList.filter((x) => x !== id);
         }
         GM_setValue("enabled-plugins", enabledList);
-        ui.toast(target.checked ? "已启用" : "已禁用");
+        ui.toast(turningOn ? "已启用" : "已禁用");
         setTimeout(renderPanel, 150);
       });
     });
@@ -3219,6 +3383,10 @@
     } else {
       renderPanel();
     }
+  };
+  ui.onCloudClick = () => {
+    const ok = openCloudPanel();
+    if (!ok) ui.toast("云端组件未加载");
   };
   GM_registerMenuCommand("打开 GitHub Toolkit 面板", renderPanel);
   function ensureFab() {
