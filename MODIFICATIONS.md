@@ -112,6 +112,13 @@
 - **版本**：`package.json` / `vite.config.ts` / `TOOLKIT_VERSION` 三处同步至 2.5.3。
 - **git**：根 `.gitignore` 与子目录 `.gitignore` 均移除 `dist/`，构建产物纳入版本控制。
 
+#### v2.6.2 显示上游更新时间与最后提交时间
+
+- **更新时间**：about 元信息行新增时钟图标 + 相对时间项（数据来自仓库 API 的 `pushed_at`，随 about 24h 缓存），悬停显示完整日期。
+- **最后提交时间**：新增 `loadLastCommit()`（commits API 取默认分支最新一条），持久缓存 1 小时、stale-while-revalidate；异步到达后局部刷新详情。
+- **气泡**：新增 `extraMeta` 通用扩展参数，追加「最近推送」「最后提交」两行，格式 `YYYY-MM-DD（n 天前）`。
+- **新增 `src/core/time.ts`**：`relativeTime()`（刚刚/n 分钟前/n 小时前/n 天前/n 个月前/n 年前）与 `formatDate()`（YYYY-MM-DD），面板与气泡共用。
+
 #### v2.6.1 加速面板新增克隆命令区块
 
 - **新增「克隆命令」区块**（加速 Tab 下半部，经视觉稿选定紧凑版）：

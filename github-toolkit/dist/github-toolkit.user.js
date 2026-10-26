@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         GitHub Toolkit
 // @namespace    github-toolkit
-// @version      2.6.1
+// @version      2.6.2
 // @author       Cores
 // @description  高内聚低耦合的 GitHub 模块化工具台（图标操作 + 复制上游链接）
 // @license      MIT
@@ -2070,6 +2070,47 @@
   const FORK_CACHE_TTL = 10 * 60 * 1e3;
   const aboutCache = /* @__PURE__ */ new Map();
   const ABOUT_TTL = 24 * 60 * 60 * 1e3;
+  const LAST_COMMIT_TTL = 60 * 60 * 1e3;
+  const lastCommitMem = /* @__PURE__ */ new Map();
+  function loadLastCommit(owner, repo, onData) {
+    const key = `lastcommit:${owner}/${repo}`.toLowerCase();
+    cachedFetch(
+      { key, ttl: LAST_COMMIT_TTL },
+      () => fetchLastCommit(owner, repo),
+      (date) => {
+        if (date) lastCommitMem.set(key, date);
+        onData(date);
+      }
+    );
+  }
+  function fetchLastCommit(owner, repo) {
+    return new Promise((resolve) => {
+      try {
+        GM_xmlhttpRequest({
+          method: "GET",
+          url: `https://api.github.com/repos/${owner}/${repo}/commits?per_page=1`,
+          headers: API_HEADERS,
+          onload: (res) => {
+            if (res.status !== 200) {
+              resolve(null);
+              return;
+            }
+            try {
+              const arr = JSON.parse(res.responseText);
+              const date = Array.isArray(arr) && arr[0]?.commit?.committer?.date ? arr[0].commit.committer.date : null;
+              resolve(date);
+            } catch {
+              resolve(null);
+            }
+          },
+          onerror: () => resolve(null),
+          ontimeout: () => resolve(null)
+        });
+      } catch {
+        resolve(null);
+      }
+    });
+  }
   function loadRepoAbout(owner, repo, onData) {
     const key = `about:${owner}/${repo}`.toLowerCase();
     cachedFetch(
@@ -2194,7 +2235,7 @@
     if (t.closest("[data-ghtk-popover-trigger]")) return;
     closePopover();
   };
-  function showAboutPopover({ about, anchor, pageType, actions = [] }) {
+  function showAboutPopover({ about, anchor, pageType, extraMeta = [], actions = [] }) {
     injectGlobalStyles();
     const already = document.querySelector("." + POPOVER_CLASS);
     const sameAnchor = already?.getAttribute("data-anchor") === about.full_name;
@@ -2207,7 +2248,8 @@
       ["Star", compactNum$1(about.stars)],
       ["Fork", compactNum$1(about.forks)],
       ["License", about.license || "—"],
-      ["Open Issues", String(about.openIssues)]
+      ["Open Issues", String(about.openIssues)],
+      ...extraMeta
     ];
     const topics = about.topics.length ? `<div class="ghtk-pop-sec">Topics · ${about.topics.length}</div>
        <div class="ghtk-pop-topics">${about.topics.map((t) => `<span class="ghtk-topic">${escapeHtml$2(t)}</span>`).join("")}</div>` : "";
@@ -2299,6 +2341,28 @@
       document.addEventListener("mousedown", onDocDown, true);
     }, 0);
   }
+  function relativeTime(iso) {
+    const then = new Date(iso).getTime();
+    if (isNaN(then)) return "—";
+    const diff = Date.now() - then;
+    const MIN = 6e4;
+    const HOUR = 36e5;
+    const DAY = 864e5;
+    if (diff < MIN) return "刚刚";
+    if (diff < HOUR) return `${Math.floor(diff / MIN)} 分钟前`;
+    if (diff < DAY) return `${Math.floor(diff / HOUR)} 小时前`;
+    if (diff < DAY * 30) return `${Math.floor(diff / DAY)} 天前`;
+    if (diff < DAY * 365) return `${Math.floor(diff / (DAY * 30))} 个月前`;
+    return `${Math.floor(diff / (DAY * 365))} 年前`;
+  }
+  function formatDate(iso) {
+    const d = new Date(iso);
+    if (isNaN(d.getTime())) return "—";
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, "0");
+    const day = String(d.getDate()).padStart(2, "0");
+    return `${y}-${m}-${day}`;
+  }
   const BIND_STORAGE_KEY = "upstream-downstream-bindings";
   function loadBindings() {
     return GM_getValue(BIND_STORAGE_KEY, []);
@@ -2339,8 +2403,9 @@
     Lua: "#000080",
     Zig: "#ec915c"
   };
-  function renderAbout(about, full, pageType) {
+  function renderAbout(about, full, lastCommit) {
     const expandIcon = `<svg viewBox="0 0 16 16"><path d="M3.75 2h3.5a.75.75 0 0 1 0 1.5h-3.5a.25.25 0 0 0-.25.25v8.5c0 .138.112.25.25.25h8.5a.25.25 0 0 0 .25-.25v-3.5a.75.75 0 0 1 1.5 0v3.5A1.75 1.75 0 0 1 12.25 14h-8.5A1.75 1.75 0 0 1 2 12.25v-8.5C2 2.784 2.784 2 3.75 2Zm6.854-1h4.146a.25.25 0 0 1 .25.25v4.146a.25.25 0 0 1-.427.177L13.03 4.03 9.28 7.78a.75.75 0 0 1-1.06-1.06l3.75-3.75-1.543-1.543A.25.25 0 0 1 10.604 1Z"/></svg>`;
+    const clockIcon = `<svg viewBox="0 0 16 16"><path d="M8 0a8 8 0 1 1 0 16A8 8 0 0 1 8 0ZM1.5 8a6.5 6.5 0 1 0 13 0 6.5 6.5 0 0 0-13 0Zm7-3.25v2.992l2.028.812a.75.75 0 0 1-.557 1.392l-2.5-1A.75.75 0 0 1 7 8.25v-3.5a.75.75 0 0 1 1.5 0Z"/></svg>`;
     if (about === void 0) {
       return `
       <div class="ghtk-about">
@@ -2375,6 +2440,11 @@
     if (about.forks) {
       metaItems.push(
         `<span class="item"><svg viewBox="0 0 16 16"><path d="M5 5.372v.878c0 .414.336.75.75.75h4.5a.75.75 0 0 0 .75-.75v-.878a2.25 2.25 0 1 1 1.5 0v.878a2.25 2.25 0 0 1-2.25 2.25h-1.5v2.128a2.251 2.251 0 1 1-1.5 0V8.5h-1.5A2.25 2.25 0 0 1 3.5 6.25v-.878a2.25 2.25 0 1 1 1.5 0ZM5 3.25a.75.75 0 1 0-1.5 0 .75.75 0 0 0 1.5 0Zm6.75.75a.75.75 0 1 0 0-1.5.75.75 0 0 0 0 1.5Zm-3 8.75a.75.75 0 1 0-1.5 0 .75.75 0 0 0 1.5 0Z"/></svg><span>${compactNum(about.forks)}</span></span>`
+      );
+    }
+    if (about.updatedAt) {
+      metaItems.push(
+        `<span class="item" title="最近推送 ${formatDate(about.updatedAt)}">${clockIcon}<span>${relativeTime(about.updatedAt)}</span></span>`
       );
     }
     if (about.license) {
@@ -2440,7 +2510,8 @@
           query: "",
           status: { text: "" },
           draft: "",
-          about: /* @__PURE__ */ new Map()
+          about: /* @__PURE__ */ new Map(),
+          lastCommit: /* @__PURE__ */ new Map()
         };
         const railList = root.querySelector("#ghtk-rail-list");
         const railState = root.querySelector("#ghtk-rail-state");
@@ -2528,7 +2599,8 @@
           const downs = b.downstreams || [];
           const full = `${b.owner}/${b.repo}`;
           const about = state.about.get(full.toLowerCase());
-          const aboutHtml = renderAbout(about, full, page.type);
+          state.lastCommit.get(full.toLowerCase());
+          const aboutHtml = renderAbout(about);
           const ownerText = `${b.owner}`;
           const rows = downs.length ? downs.map((d) => {
             const isMine = !!currentUser && d.toLowerCase().startsWith(`${currentUser.toLowerCase()}/`);
@@ -2583,10 +2655,18 @@
               return;
             }
             const anchor = ev.currentTarget;
+            const lastCommitDate = state.lastCommit.get(full.toLowerCase());
             showAboutPopover({
               about: data,
               anchor,
               pageType: page.type,
+              extraMeta: [
+                [
+                  "最近推送",
+                  data.updatedAt ? `${formatDate(data.updatedAt)}（${relativeTime(data.updatedAt)}）` : "—"
+                ],
+                ["最后提交", lastCommitDate ? `${formatDate(lastCommitDate)}（${relativeTime(lastCommitDate)}）` : "—"]
+              ],
               actions: [
                 { label: "打开仓库", href: `https://github.com/${full}` },
                 {
@@ -2697,12 +2777,23 @@
             ctx.ui.toast("已删除");
           });
           loadAbout(b);
+          loadCommitTime(b);
         };
         const loadAbout = (b) => {
           const key = `${b.owner}/${b.repo}`.toLowerCase();
           if (state.about.has(key)) return;
           loadRepoAbout(b.owner, b.repo, (data) => {
             state.about.set(key, data);
+            const cur = loadBindings()[state.selected];
+            if (!cur) return;
+            if (`${cur.owner}/${cur.repo}`.toLowerCase() === key) renderDetail();
+          });
+        };
+        const loadCommitTime = (b) => {
+          const key = `${b.owner}/${b.repo}`.toLowerCase();
+          if (state.lastCommit.has(key)) return;
+          loadLastCommit(b.owner, b.repo, (date) => {
+            state.lastCommit.set(key, date);
             const cur = loadBindings()[state.selected];
             if (!cur) return;
             if (`${cur.owner}/${cur.repo}`.toLowerCase() === key) renderDetail();
@@ -3018,7 +3109,7 @@
   }
   const builtinPlugins = [UpstreamBindPlugin, AccelPlugin];
   const DEFAULT_ENABLED = ["upstream-bind", "github-accel"];
-  const TOOLKIT_VERSION = "2.6.1";
+  const TOOLKIT_VERSION = "2.6.2";
   const eventBus = new EventBus();
   const dom = new DOMHelper();
   const ui = new UIManager();

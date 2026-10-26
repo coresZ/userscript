@@ -7,7 +7,7 @@ import { Logger } from './core/logger';
 import { bindSoftNav } from './core/navigate';
 import { builtinPlugins, DEFAULT_ENABLED } from './plugins';
 
-const TOOLKIT_VERSION = '2.6.1';
+const TOOLKIT_VERSION = '2.6.2';
 
 // ---------- 核心组装 ----------
 const eventBus = new EventBus();

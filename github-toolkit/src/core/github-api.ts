@@ -102,6 +102,63 @@ const aboutCache = new Map<string, { data: RepoAbout | null; at: number }>();
 /** about 数据变化慢，持久缓存 24 小时 */
 const ABOUT_TTL = 24 * 60 * 60 * 1000;
 
+/** 最后提交时间：变化较快，持久缓存 1 小时 */
+const LAST_COMMIT_TTL = 60 * 60 * 1000;
+const lastCommitMem = new Map<string, string | null>();
+
+/**
+ * 读取默认分支最后提交时间：内存 → 持久层 → 网络。
+ * 命中过期数据时先回调旧值，后台静默刷新后再回调新值。
+ */
+export function loadLastCommit(
+  owner: string,
+  repo: string,
+  onData: (date: string | null) => void
+): void {
+  const key = `lastcommit:${owner}/${repo}`.toLowerCase();
+  cachedFetch<string>(
+    { key, ttl: LAST_COMMIT_TTL },
+    () => fetchLastCommit(owner, repo),
+    (date) => {
+      if (date) lastCommitMem.set(key, date);
+      onData(date);
+    }
+  );
+}
+
+/** 拉取默认分支最后提交时间（ISO 字符串；空仓库返回 null） */
+function fetchLastCommit(owner: string, repo: string): Promise<string | null> {
+  return new Promise((resolve) => {
+    try {
+      GM_xmlhttpRequest({
+        method: 'GET',
+        url: `https://api.github.com/repos/${owner}/${repo}/commits?per_page=1`,
+        headers: API_HEADERS,
+        onload: (res) => {
+          if (res.status !== 200) {
+            resolve(null);
+            return;
+          }
+          try {
+            const arr = JSON.parse(res.responseText);
+            const date =
+              Array.isArray(arr) && arr[0]?.commit?.committer?.date
+                ? (arr[0].commit.committer.date as string)
+                : null;
+            resolve(date);
+          } catch {
+            resolve(null);
+          }
+        },
+        onerror: () => resolve(null),
+        ontimeout: () => resolve(null),
+      });
+    } catch {
+      resolve(null);
+    }
+  });
+}
+
 /**
  * 读取 about：内存 → 持久层 → 网络。
  * 命中过期数据时先回调旧值（不显示加载态），后台静默刷新后再回调新值。

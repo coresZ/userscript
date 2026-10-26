@@ -1,7 +1,14 @@
 import type { Binding, PageContext, Plugin, PluginContext } from '../types';
 import { Modal } from '../core/modal';
-import { checkHasForked, fetchRepoInfo, getCurrentUser, loadRepoAbout } from '../core/github-api';
+import {
+  checkHasForked,
+  fetchRepoInfo,
+  getCurrentUser,
+  loadRepoAbout,
+  loadLastCommit,
+} from '../core/github-api';
 import { showAboutPopover } from '../core/popover';
+import { relativeTime, formatDate } from '../core/time';
 import type { RepoAbout } from '../core/github-api';
 
 const BIND_STORAGE_KEY = 'upstream-downstream-bindings';
@@ -38,6 +45,8 @@ interface ViewState {
   draft: string;
   /** 已加载的上游 about（按 owner/repo 小写缓存） */
   about: Map<string, RepoAbout | null>;
+  /** 最后提交时间（按 owner/repo 小写缓存，ISO 字符串） */
+  lastCommit: Map<string, string | null>;
 }
 
 /** 数字紧凑格式：1234 → 1.2k */
@@ -79,9 +88,10 @@ const LANG_COLORS: Record<string, string> = {
 function renderAbout(
   about: RepoAbout | null | undefined,
   full: string,
-  pageType: string
+  lastCommit: string | null | undefined
 ): string {
   const expandIcon = `<svg viewBox="0 0 16 16"><path d="M3.75 2h3.5a.75.75 0 0 1 0 1.5h-3.5a.25.25 0 0 0-.25.25v8.5c0 .138.112.25.25.25h8.5a.25.25 0 0 0 .25-.25v-3.5a.75.75 0 0 1 1.5 0v3.5A1.75 1.75 0 0 1 12.25 14h-8.5A1.75 1.75 0 0 1 2 12.25v-8.5C2 2.784 2.784 2 3.75 2Zm6.854-1h4.146a.25.25 0 0 1 .25.25v4.146a.25.25 0 0 1-.427.177L13.03 4.03 9.28 7.78a.75.75 0 0 1-1.06-1.06l3.75-3.75-1.543-1.543A.25.25 0 0 1 10.604 1Z"/></svg>`;
+  const clockIcon = `<svg viewBox="0 0 16 16"><path d="M8 0a8 8 0 1 1 0 16A8 8 0 0 1 8 0ZM1.5 8a6.5 6.5 0 1 0 13 0 6.5 6.5 0 0 0-13 0Zm7-3.25v2.992l2.028.812a.75.75 0 0 1-.557 1.392l-2.5-1A.75.75 0 0 1 7 8.25v-3.5a.75.75 0 0 1 1.5 0Z"/></svg>`;
 
   if (about === undefined) {
     return `
@@ -118,6 +128,11 @@ function renderAbout(
   if (about.forks) {
     metaItems.push(
       `<span class="item"><svg viewBox="0 0 16 16"><path d="M5 5.372v.878c0 .414.336.75.75.75h4.5a.75.75 0 0 0 .75-.75v-.878a2.25 2.25 0 1 1 1.5 0v.878a2.25 2.25 0 0 1-2.25 2.25h-1.5v2.128a2.251 2.251 0 1 1-1.5 0V8.5h-1.5A2.25 2.25 0 0 1 3.5 6.25v-.878a2.25 2.25 0 1 1 1.5 0ZM5 3.25a.75.75 0 1 0-1.5 0 .75.75 0 0 0 1.5 0Zm6.75.75a.75.75 0 1 0 0-1.5.75.75 0 0 0 0 1.5Zm-3 8.75a.75.75 0 1 0-1.5 0 .75.75 0 0 0 1.5 0Z"/></svg><span>${compactNum(about.forks)}</span></span>`
+    );
+  }
+  if (about.updatedAt) {
+    metaItems.push(
+      `<span class="item" title="最近推送 ${formatDate(about.updatedAt)}">${clockIcon}<span>${relativeTime(about.updatedAt)}</span></span>`
     );
   }
   if (about.license) {
@@ -197,6 +212,7 @@ export const UpstreamBindPlugin: Plugin = {
         status: { text: '' },
         draft: '',
         about: new Map(),
+        lastCommit: new Map(),
       };
 
       const railList = root.querySelector<HTMLElement>('#ghtk-rail-list');
@@ -313,7 +329,8 @@ export const UpstreamBindPlugin: Plugin = {
         const downs = b.downstreams || [];
         const full = `${b.owner}/${b.repo}`;
         const about = state.about.get(full.toLowerCase());
-        const aboutHtml = renderAbout(about, full, page.type);
+        const lastCommit = state.lastCommit.get(full.toLowerCase());
+        const aboutHtml = renderAbout(about, full, lastCommit);
         const ownerText = `${b.owner}`;
 
         const rows = downs.length
@@ -386,10 +403,20 @@ export const UpstreamBindPlugin: Plugin = {
             return;
           }
           const anchor = ev.currentTarget as HTMLElement;
+          const lastCommitDate = state.lastCommit.get(full.toLowerCase());
           showAboutPopover({
             about: data,
             anchor,
             pageType: page.type,
+            extraMeta: [
+              [
+                '最近推送',
+                data.updatedAt
+                  ? `${formatDate(data.updatedAt)}（${relativeTime(data.updatedAt)}）`
+                  : '—',
+              ],
+              ['最后提交', lastCommitDate ? `${formatDate(lastCommitDate)}（${relativeTime(lastCommitDate)}）` : '—'],
+            ],
             actions: [
               { label: '打开仓库', href: `https://github.com/${full}` },
               {
@@ -518,6 +545,8 @@ export const UpstreamBindPlugin: Plugin = {
 
         // 按需加载 about（命中持久缓存则立即渲染，不显示加载态）
         loadAbout(b);
+        // 按需加载最后提交时间
+        loadCommitTime(b);
       };
 
       /** 读取 about：内存 → GM 持久缓存 → 网络，过期时先渲染旧值再后台刷新 */
@@ -528,6 +557,19 @@ export const UpstreamBindPlugin: Plugin = {
         loadRepoAbout(b.owner, b.repo, (data) => {
           state.about.set(key, data);
           // 仅当当前选中的还是这一条时才刷新，避免切走后又闪回
+          const cur = loadBindings()[state.selected];
+          if (!cur) return;
+          if (`${cur.owner}/${cur.repo}`.toLowerCase() === key) renderDetail();
+        });
+      };
+
+      /** 读取默认分支最后提交时间，回调后局部刷新详情 */
+      const loadCommitTime = (b: Binding) => {
+        const key = `${b.owner}/${b.repo}`.toLowerCase();
+        if (state.lastCommit.has(key)) return;
+
+        loadLastCommit(b.owner, b.repo, (date) => {
+          state.lastCommit.set(key, date);
           const cur = loadBindings()[state.selected];
           if (!cur) return;
           if (`${cur.owner}/${cur.repo}`.toLowerCase() === key) renderDetail();

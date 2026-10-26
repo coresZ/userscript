@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         GitHub Toolkit
 // @namespace    github-toolkit
-// @version      2.6.1
+// @version      2.6.2
 // @author       Cores
 // @description  高内聚低耦合的 GitHub 模块化工具台（图标操作 + 复制上游链接）
 // @license      MIT

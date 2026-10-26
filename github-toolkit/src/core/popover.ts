@@ -29,6 +29,8 @@ export interface AboutPopoverOptions {
   about: RepoAbout;
   anchor: HTMLElement;
   pageType?: string;
+  /** 追加到元信息网格末尾的自定义行（如最近推送 / 最后提交） */
+  extraMeta?: Array<[string, string]>;
   actions?: PopoverAction[];
 }
 
@@ -52,7 +54,7 @@ const onDocDown = (e: MouseEvent) => {
 };
 
 /** 展示仓库 about 气泡：固定尺寸、内部滚动、锚定触发按钮 */
-export function showAboutPopover({ about, anchor, pageType, actions = [] }: AboutPopoverOptions): void {
+export function showAboutPopover({ about, anchor, pageType, extraMeta = [], actions = [] }: AboutPopoverOptions): void {
   injectGlobalStyles();
   const already = document.querySelector('.' + POPOVER_CLASS);
   const sameAnchor = already?.getAttribute('data-anchor') === about.full_name;
@@ -67,6 +69,7 @@ export function showAboutPopover({ about, anchor, pageType, actions = [] }: Abou
     ['Fork', compactNum(about.forks)],
     ['License', about.license || '—'],
     ['Open Issues', String(about.openIssues)],
+    ...extraMeta,
   ];
 
   const topics = about.topics.length
