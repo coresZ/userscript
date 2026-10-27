@@ -112,6 +112,38 @@
 - **版本**：`package.json` / `vite.config.ts` / `TOOLKIT_VERSION` 三处同步至 2.5.3。
 - **git**：根 `.gitignore` 与子目录 `.gitignore` 均移除 `dist/`，构建产物纳入版本控制。
 
+#### v2.8.0 左栏新增「当前仓库」入口
+
+- **需求**：没 fork 的项目也要能在面板里看到，不能只显示已绑定项。
+- **实现**（方案 B）：左栏标题下方新增常驻入口 `.ghtk-current-repo`，一行 30px：
+  - **定位图钉（pin）+ 仓库名文字（owner/repo，超长省略号）+ 状态图标**——仓库名是文字，只有「是否绑定」用图标表示。
+  - 状态图标：**已绑定 = 绿色实心勾**，**未绑定 = 灰色空心圆**。
+  - `title` 悬停显示完整说明：`当前仓库：owner/repo` + 状态（已绑定（当前仓库就是上游）/ 已绑定（当前仓库是这条绑定的下游）/ 未绑定，点击添加）。
+  - 点击：已绑定 → 直接选中对应左栏条目；未绑定 → 进入添加视图并预填当前仓库全名。
+  - 非仓库页（无 owner/repo）自动隐藏。
+- **样式优先级坑**：状态图标的显隐必须写成 `#ghtk-root .ghtk-current-repo ...`，因为 reset 段的 `#ghtk-root svg { display: block !important }` 带 id 选择器，会压过普通类选择器（首版三个图标同时显示/后续状态图标不切换都是这个原因）。另外 CSS 注释里不能出现反引号，会提前截断模板字符串导致 tsc 报错。
+- **验证**：已绑定态 → `bound` 类 + 绿勾 + 名字 `sodahub-org/sodam`（省略号）+ 点击选中；未绑定态 → 空心圆 + 名字 `someorg/unknownrepo` + 点击进添加视图并预填。
+
+#### v2.7.3 修复「已 fork 却绑定不了」
+
+- **根因（三条叠加）**：
+  1. 旧逻辑只看 `res.status !== 200` 就判定「未检测到 Fork」——GitHub 匿名 API 限额 60 次/小时，面板每次打开会打 about + commits + fork 三个请求，很容易 403，用户被误判成没 fork。
+  2. 失败结果（null）被写进 10 分钟缓存，一次限流会锁死后续 10 分钟的所有重试。
+  3. fork 后给仓库改名的场景，`/repos/{me}/{repo}` 返回 404，也被当成没 fork。
+- **修复**：
+  - `checkHasForked()` 改为返回 `{ forkUrl, reason }`，区分 `fork` / `not-fork` / `rate-limited` / `unknown`。
+  - **新增 HTML 兜底探测** `probeForkByHtml()`：API 403/429/404 时抓 `https://github.com/{user}/{repo}` 页面，正则匹配 `forked from` 链接判定 fork —— 不消耗 API 配额，且同源请求自带登录态。
+  - **只缓存确定结论**（fork / not-fork），限流与未知错误不写缓存。
+  - 检测失败时不再只 toast，而是**自动弹出手动确认弹窗**（预填 `{currentUser}/{repo}`），并按原因给出不同提示（限流 / 检测失败 / 未检测到）。
+- **验证**（三种桩场景）：API 200 → 直接绑定；API 403 + HTML 命中 `forked from` → 兜底成功绑定；全部失败 → 弹出手动确认，预填 `coresZ/sodam`。
+
+#### v2.7.2 修复弹窗脱离面板乱跳
+
+- **现象**：手动绑定等弹窗打开后位置错乱（跑到视口左上角、不跟随面板）。
+- **根因**：`.ghtk-modal-mask` 的 CSS 带 `inset: 0 !important`，而 JS 用内联样式设 `left/top/width/height`（无 `!important`）。级联上 author `!important` 高于普通内联，导致遮罩被拉成全屏/左上角定位。
+- **修复**：`Modal` 改用 `style.setProperty(..., 'important')` 写入位置（内联 `!important` 可压过样式表 `!important`），并显式把 `right/bottom` 设为 `auto`。
+- **顺带增强**：改为 `requestAnimationFrame` 逐帧比对面板 `getBoundingClientRect`（位置无变化则不写样式），拖动面板、窗口缩放、面板重建都能实时跟随；关闭弹窗时 `cancelAnimationFrame` 清理。输入框聚焦改 `focus({ preventScroll: true })`，避免聚焦触发页面滚动。
+
 #### v2.7.1 插件开关化 + 云图标更换
 
 - **插件启用/禁用改为开关控件**：原生 checkbox 视觉上像复选框而非开关，改为 GitHub 风格 `.ghtk-switch`（40×22、圆角 11px、knob 16px、开启蓝底 knob 右移），`role="switch"` + `aria-checked`，点击后 toast 与持久化逻辑不变。

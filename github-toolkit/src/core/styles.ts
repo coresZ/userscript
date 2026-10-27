@@ -346,6 +346,75 @@ const CSS = `
       text-overflow: ellipsis !important;
       white-space: nowrap !important;
     }
+    /* ===== 左栏「当前仓库」入口：图钉 + 仓库名 + 状态图标，hover 出说明 ===== */
+    .ghtk-current-repo {
+      position: relative !important;
+      display: flex !important;
+      align-items: center !important;
+      justify-content: flex-start !important;
+      gap: 5px !important;
+      height: var(--ghtk-ctl-h) !important;
+      margin: 0 6px 4px !important;
+      padding: 0 8px !important;
+      border: 1px solid var(--borderColor-default, #d0d7de) !important;
+      border-radius: var(--ghtk-ctl-radius) !important;
+      background: var(--bgColor-default, #fff) !important;
+      color: var(--fgColor-muted, #59636e) !important;
+      cursor: pointer !important;
+      flex-shrink: 0 !important;
+      transition: background .12s, color .12s, border-color .12s !important;
+      box-sizing: border-box !important;
+    }
+    .ghtk-current-repo[hidden] { display: none !important; }
+    .ghtk-current-repo:hover {
+      background: #ddf4ff !important;
+      border-color: #54aeff !important;
+      color: #0969da !important;
+    }
+    .ghtk-current-repo .pin {
+      width: 13px !important;
+      height: 13px !important;
+      fill: currentColor !important;
+      flex-shrink: 0 !important;
+    }
+    /* 仓库名：占满中间，超长省略 */
+    .ghtk-current-repo .name {
+      flex: 1 !important;
+      min-width: 0 !important;
+      font-size: 11.5px !important;
+      font-weight: 600 !important;
+      color: var(--fgColor-default, #1f2328) !important;
+      text-align: left !important;
+      overflow: hidden !important;
+      text-overflow: ellipsis !important;
+      white-space: nowrap !important;
+    }
+    .ghtk-current-repo:hover .name { color: #0969da !important; }
+    .ghtk-current-repo.bound:hover .name { color: #1a7f37 !important; }
+    .ghtk-current-repo .badge {
+      width: 11px !important;
+      height: 11px !important;
+      flex-shrink: 0 !important;
+    }
+    /* 已绑定：实心勾（绿）；未绑定：空心圆（灰）。
+       必须带 #ghtk-root 前缀，否则会被 reset 段的 #ghtk-root svg（含 id 选择器）压过。 */
+    #ghtk-root .ghtk-current-repo .bound-icon {
+      display: none !important;
+      fill: #1a7f37 !important;
+    }
+    #ghtk-root .ghtk-current-repo .unbound-icon {
+      display: block !important;
+      fill: #afb8c1 !important;
+    }
+    #ghtk-root .ghtk-current-repo.bound .bound-icon { display: block !important; }
+    #ghtk-root .ghtk-current-repo.bound .unbound-icon { display: none !important; }
+    .ghtk-current-repo.bound { color: #1a7f37 !important; }
+    .ghtk-current-repo.bound:hover {
+      background: #dafbe1 !important;
+      border-color: #4ac26b !important;
+      color: #1a7f37 !important;
+    }
+
     .ghtk-rail-list {
       flex: 1 !important;
       overflow-y: auto !important;

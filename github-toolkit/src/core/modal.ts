@@ -50,45 +50,62 @@ export const Modal = {
       getRoot().appendChild(mask);
       injectGlobalStyles();
 
-      // 跟随面板：遮罩与对话框都定位到面板区域内，而不是全屏居中
+      // 跟随面板：遮罩定位到面板区域内。
+      // 注意：CSS 里 `.ghtk-modal-mask` 带 `inset: 0 !important`，
+      // 内联样式必须同样用 important 才能覆盖，否则会被拉到视口左上角。
+      const setBox = (r: DOMRect) => {
+        mask.style.setProperty('left', r.left + 'px', 'important');
+        mask.style.setProperty('top', r.top + 'px', 'important');
+        mask.style.setProperty('width', r.width + 'px', 'important');
+        mask.style.setProperty('height', r.height + 'px', 'important');
+        mask.style.setProperty('right', 'auto', 'important');
+        mask.style.setProperty('bottom', 'auto', 'important');
+      };
+
       const panel = document.querySelector<HTMLElement>('.ghtk-panel');
       if (panel) {
-        const rect = panel.getBoundingClientRect();
         mask.classList.add('in-panel');
-        mask.style.position = 'fixed';
-        mask.style.left = rect.left + 'px';
-        mask.style.top = rect.top + 'px';
-        mask.style.width = rect.width + 'px';
-        mask.style.height = rect.height + 'px';
-        mask.style.borderRadius = '14px';
+        mask.style.setProperty('position', 'fixed', 'important');
+        mask.style.setProperty('border-radius', '14px', 'important');
+        setBox(panel.getBoundingClientRect());
       }
 
       const input = mask.querySelector<HTMLInputElement>('.ghtk-modal-input');
       if (input) {
         setTimeout(() => {
-          input.focus();
+          input.focus({ preventScroll: true });
           input.select();
         }, 50);
       }
 
+      let rafId = 0;
+      let lastKey = '';
+
       const close = (result: ModalResult) => {
+        if (rafId) cancelAnimationFrame(rafId);
         mask.remove();
         document.removeEventListener('keydown', onKey);
-        window.removeEventListener('resize', syncToPanel);
         resolve(result);
       };
 
-      // 面板移动/缩放时让遮罩跟随
+      /**
+       * 每帧比对面板位置：拖动面板、窗口缩放、面板重建都能跟上，
+       * 位置没变则不写样式，避免无谓的重排。
+       */
       const syncToPanel = () => {
+        if (!mask.isConnected) return;
         const p = document.querySelector<HTMLElement>('.ghtk-panel');
-        if (!p || !mask.classList.contains('in-panel')) return;
-        const r = p.getBoundingClientRect();
-        mask.style.left = r.left + 'px';
-        mask.style.top = r.top + 'px';
-        mask.style.width = r.width + 'px';
-        mask.style.height = r.height + 'px';
+        if (p && mask.classList.contains('in-panel')) {
+          const r = p.getBoundingClientRect();
+          const key = [r.left, r.top, r.width, r.height].map((n) => Math.round(n)).join(',');
+          if (key !== lastKey) {
+            lastKey = key;
+            setBox(r);
+          }
+        }
+        rafId = requestAnimationFrame(syncToPanel);
       };
-      window.addEventListener('resize', syncToPanel, { passive: true });
+      if (mask.classList.contains('in-panel')) rafId = requestAnimationFrame(syncToPanel);
 
       mask.querySelector('.ghtk-modal-close')!.addEventListener('click', () => close(null));
       mask.querySelector('[data-action="cancel"]')!.addEventListener('click', () => close(null));

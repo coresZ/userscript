@@ -233,49 +233,139 @@ export function fetchRepoAbout(owner: string, repo: string): Promise<RepoAbout |
   });
 }
 
-/** 检测当前用户是否已 fork 过 owner/repo，返回其 fork 地址（未 fork 返回 null） */
+/** fork 检测结果：forkUrl 为 null 时 reason 说明原因 */
+export interface ForkCheckResult {
+  forkUrl: string | null;
+  reason: 'fork' | 'not-fork' | 'rate-limited' | 'unknown';
+}
+
+/**
+ * 检测当前用户是否已 fork 过 owner/repo。
+ *
+ * 走两条路径，避免「API 限流就永远判定没 fork」：
+ * 1. REST API（可确认 parent 关系）；
+ * 2. API 限流/失败时，抓仓库 HTML 页找 `forked from` 链接（不消耗 API 配额）。
+ * 只缓存确定结果，限流等失败不写缓存。
+ */
 export function checkHasForked(
   currentUser: string,
   owner: string,
   repo: string
-): Promise<string | null> {
+): Promise<ForkCheckResult> {
   const forkUrl = `https://github.com/${currentUser}/${repo}`;
   const cacheKey = `${currentUser}/${owner}/${repo}`.toLowerCase();
   const cached = forkCache.get(cacheKey);
   if (cached && Date.now() - cached.at < FORK_CACHE_TTL) {
-    return Promise.resolve(cached.url);
+    return Promise.resolve({
+      forkUrl: cached.url,
+      reason: cached.url ? 'fork' : 'not-fork',
+    });
   }
 
+  const remember = (result: ForkCheckResult): ForkCheckResult => {
+    // 仅缓存确定结论，避免限流/网络错误把结果锁死 10 分钟
+    if (result.reason === 'fork' || result.reason === 'not-fork') {
+      forkCache.set(cacheKey, { url: result.forkUrl, at: Date.now() });
+    }
+    return result;
+  };
+
   return new Promise((resolve) => {
-    const done = (url: string | null) => {
-      forkCache.set(cacheKey, { url, at: Date.now() });
-      resolve(url);
-    };
     try {
       GM_xmlhttpRequest({
         method: 'GET',
         url: `https://api.github.com/repos/${currentUser}/${repo}`,
         headers: API_HEADERS,
-        onload: (res) => {
-          if (res.status !== 200) {
-            done(null);
+        onload: async (res) => {
+          // 200：能确认 fork 关系
+          if (res.status === 200) {
+            try {
+              const data = JSON.parse(res.responseText);
+              const parentFull: string =
+                data.parent?.full_name || data.source?.full_name || '';
+              const isForkOfThis = parentFull.toLowerCase() === `${owner}/${repo}`.toLowerCase();
+              // 是 fork 且指向当前上游 → 通过；是 fork 但指向别处 → 也算有 fork（重命名场景）
+              if (data.fork) {
+                resolve(remember({ forkUrl, reason: 'fork' }));
+                return;
+              }
+              resolve(remember({ forkUrl: null, reason: 'not-fork' }));
+              return;
+            } catch {
+              resolve(remember({ forkUrl: null, reason: 'unknown' }));
+              return;
+            }
+          }
+
+          // 403/429：API 被限流，改走 HTML 兜底
+          if (res.status === 403 || res.status === 429) {
+            const htmlHit = await probeForkByHtml(currentUser, owner, repo);
+            if (htmlHit === true) {
+              resolve(remember({ forkUrl, reason: 'fork' }));
+            } else if (htmlHit === false) {
+              resolve(remember({ forkUrl: null, reason: 'not-fork' }));
+            } else {
+              resolve({ forkUrl: null, reason: 'rate-limited' });
+            }
             return;
           }
-          try {
-            const data = JSON.parse(res.responseText);
-            const isForkOfThis =
-              data.fork &&
-              data.parent?.full_name?.toLowerCase() === `${owner}/${repo}`.toLowerCase();
-            done(data.fork || isForkOfThis ? forkUrl : null);
-          } catch {
-            done(null);
+
+          // 404：可能没 fork，也可能是 fork 改名了 → 用 HTML 再确认一次
+          if (res.status === 404) {
+            const htmlHit = await probeForkByHtml(currentUser, owner, repo);
+            if (htmlHit === true) {
+              resolve(remember({ forkUrl, reason: 'fork' }));
+            } else {
+              resolve(remember({ forkUrl: null, reason: 'not-fork' }));
+            }
+            return;
           }
+
+          resolve({ forkUrl: null, reason: 'unknown' });
         },
-        onerror: () => done(null),
-        ontimeout: () => done(null),
+        onerror: () => resolve({ forkUrl: null, reason: 'unknown' }),
+        ontimeout: () => resolve({ forkUrl: null, reason: 'unknown' }),
       });
     } catch {
-      done(null);
+      resolve({ forkUrl: null, reason: 'unknown' });
+    }
+  });
+}
+
+/**
+ * 抓取仓库 HTML 页判断 fork 关系（不消耗 API 配额）。
+ * 返回 true=是 fork、false=页面存在但不是 fork、null=无法判断。
+ */
+function probeForkByHtml(user: string, owner: string, repo: string): Promise<boolean | null> {
+  return new Promise((resolve) => {
+    try {
+      GM_xmlhttpRequest({
+        method: 'GET',
+        url: `https://github.com/${user}/${repo}`,
+        headers: { Accept: 'text/html' },
+        timeout: 8000,
+        onload: (res) => {
+          if (res.status === 404) {
+            resolve(false); // 没有同名仓库
+            return;
+          }
+          if (res.status !== 200) {
+            resolve(null);
+            return;
+          }
+          const html = res.responseText || '';
+          // 页面里出现 "forked from <链接>" 即判定为 fork（上游可能被改名，仍算 fork）
+          if (/forked\s*from[\s\S]{0,400}?href="\/([^"/]+)\/([^"/?]+)"/i.test(html)) {
+            resolve(true);
+            return;
+          }
+          resolve(null); // 页面结构可能变化，不做否定判断
+        },
+        onerror: () => resolve(null),
+        ontimeout: () => resolve(null),
+      });
+    } catch {
+      resolve(null);
     }
   });
 }

@@ -198,6 +198,12 @@ export const UpstreamBindPlugin: Plugin = {
               <span>上游</span>
               <span class="ghtk-rail-state" id="ghtk-rail-state"></span>
             </div>
+            <button class="ghtk-current-repo" id="ghtk-current-repo" type="button" hidden>
+              <svg class="pin" viewBox="0 0 16 16"><path d="M8 16s6-5.686 6-10A6 6 0 0 0 2 6c0 4.314 6 10 6 10Zm0-7a3 3 0 1 1 0-6 3 3 0 0 1 0 6Z"/></svg>
+              <span class="name" id="ghtk-current-repo-name"></span>
+              <svg class="badge bound-icon" viewBox="0 0 16 16"><path d="M8 16A8 8 0 1 1 8 0a8 8 0 0 1 0 16Zm3.78-9.72a.75.75 0 0 0-1.06-1.06L7.25 8.69 5.78 7.22a.75.75 0 0 0-1.06 1.06l2 2a.75.75 0 0 0 1.06 0l4-4Z"/></svg>
+              <svg class="badge unbound-icon" viewBox="0 0 16 16"><path d="M8 0a8 8 0 1 1 0 16A8 8 0 0 1 8 0ZM1.5 8a6.5 6.5 0 1 0 13 0 6.5 6.5 0 0 0-13 0Z"/></svg>
+            </button>
             <div class="ghtk-rail-list" id="ghtk-rail-list"></div>
           </div>
           <div class="ghtk-detail" id="ghtk-detail"></div>
@@ -220,6 +226,8 @@ export const UpstreamBindPlugin: Plugin = {
       const detail = root.querySelector<HTMLElement>('#ghtk-detail');
       const addToggle = root.querySelector<HTMLElement>('#ghtk-add-toggle');
       const searchInput = root.querySelector<HTMLInputElement>('#ghtk-search-input');
+      const currentRepoBtn = root.querySelector<HTMLElement>('#ghtk-current-repo');
+      const currentRepoName = root.querySelector<HTMLElement>('#ghtk-current-repo-name');
       if (!railList || !detail || !railState) return;
 
       const currentUser = getCurrentUser(ctx.dom);
@@ -237,6 +245,38 @@ export const UpstreamBindPlugin: Plugin = {
       /** 与当前仓库相关的绑定 */
       const isCurrent = (b: Binding) => isUpstreamOfCurrent(b) || isDownstreamOfCurrent(b);
 
+      /**
+       * 左栏「当前仓库」入口：仅图标 + 状态图标，hover 出完整说明。
+       * 已绑定 → ✓ 图标；未绑定 → 空心圆；点击已绑定项直接选中，未绑定则带着仓库名进添加视图。
+       */
+      const updateCurrentRepoBtn = () => {
+        if (!currentRepoBtn) return;
+        if (!currentRepo) {
+          currentRepoBtn.hidden = true;
+          return;
+        }
+        currentRepoBtn.hidden = false;
+
+        const list = loadBindings();
+        const upIdx = list.findIndex(isUpstreamOfCurrent);
+        const downIdx = list.findIndex(isDownstreamOfCurrent);
+        const idx = upIdx >= 0 ? upIdx : downIdx;
+        const bound = idx >= 0;
+
+        currentRepoBtn.classList.toggle('bound', bound);
+        currentRepoBtn.dataset.idx = bound ? String(idx) : '';
+        if (currentRepoName) currentRepoName.textContent = currentRepo;
+
+        const stateText = bound
+          ? upIdx >= 0
+            ? '已绑定（当前仓库就是上游）'
+            : '已绑定（当前仓库是这条绑定的下游）'
+          : '未绑定，点击添加';
+        const tip = `当前仓库：${currentRepo}\n${stateText}`;
+        currentRepoBtn.title = tip;
+        currentRepoBtn.setAttribute('aria-label', tip);
+      };
+
       /** 默认选中：当前仓库本身是上游 → 优先；其次当前仓库是下游；否则第一条 */
       const pickDefault = () => {
         const list = loadBindings();
@@ -251,6 +291,7 @@ export const UpstreamBindPlugin: Plugin = {
       };
 
       const renderRail = () => {
+        updateCurrentRepoBtn();
         const list = loadBindings();
         const q = state.query.trim().toLowerCase();
         const rows = list
@@ -465,11 +506,12 @@ export const UpstreamBindPlugin: Plugin = {
           const target = loadBindings()[state.selected];
           if (!target) return;
           ctx.ui.toast('正在检测…');
-          const forkUrl = await checkHasForked(currentUser, target.owner, target.repo);
-          const latest = loadBindings();
-          const cur = latest[state.selected];
-          if (!cur) return;
-          if (forkUrl) {
+          const res = await checkHasForked(currentUser, target.owner, target.repo);
+
+          if (res.forkUrl) {
+            const latest = loadBindings();
+            const cur = latest[state.selected];
+            if (!cur) return;
             const down = `${currentUser}/${cur.repo}`;
             cur.downstreams = cur.downstreams || [];
             if (!cur.downstreams.includes(down)) {
@@ -481,8 +523,45 @@ export const UpstreamBindPlugin: Plugin = {
             } else {
               ctx.ui.toast('已存在');
             }
+            return;
+          }
+
+          // 检测失败：说明具体原因，并直接弹出手动绑定（预填你的 fork 路径）
+          if (res.reason === 'rate-limited') {
+            ctx.ui.toast('API 限流，改用手动确认');
+          } else if (res.reason === 'unknown') {
+            ctx.ui.toast('检测失败，请手动确认');
           } else {
-            ctx.ui.toast('未检测到 Fork');
+            ctx.ui.toast('未检测到 Fork，请手动确认');
+          }
+
+          const suggested = `${currentUser}/${target.repo}`;
+          const val = await Modal.show({
+            title: '确认下游仓库',
+            content: '没自动检测到你的 fork。如果确实 fork 过（比如改了名字），直接填仓库全名。',
+            showInput: true,
+            inputValue: suggested,
+            placeholder: 'owner/repo',
+            confirmText: '绑定',
+          });
+          if (!val) return;
+          const cleaned = String(val).trim().replace(/^https?:\/\/github\.com\//i, '');
+          if (!cleaned.includes('/')) {
+            ctx.ui.toast('格式错误');
+            return;
+          }
+          const latest = loadBindings();
+          const cur = latest[state.selected];
+          if (!cur) return;
+          cur.downstreams = cur.downstreams || [];
+          if (!cur.downstreams.includes(cleaned)) {
+            cur.downstreams.push(cleaned);
+            saveBindings(latest);
+            renderRail();
+            renderDetail();
+            ctx.ui.toast('已绑定 ' + cleaned);
+          } else {
+            ctx.ui.toast('已存在');
           }
         });
 
@@ -709,10 +788,31 @@ export const UpstreamBindPlugin: Plugin = {
         renderRail();
       });
 
-      // 添加上游开关
+      // 添加视图 ←→ 详情视图
       addToggle?.addEventListener('click', () => {
         if (state.addMode) exitAddMode();
         else enterAddMode();
+      });
+
+      // 左栏「当前仓库」入口
+      currentRepoBtn?.addEventListener('click', () => {
+        const idxText = currentRepoBtn.dataset.idx;
+        if (idxText !== undefined && idxText !== '') {
+          // 已绑定 → 直接选中对应条目
+          state.selected = +idxText;
+          state.addMode = false;
+          addToggle?.classList.remove('active');
+          renderRail();
+          renderDetail();
+          return;
+        }
+        // 未绑定 → 进添加视图并预填当前仓库
+        enterAddMode();
+        const input = root.querySelector<HTMLInputElement>('#ghtk-upstream-input');
+        if (input) {
+          input.value = currentRepo;
+          input.focus();
+        }
       });
 
       pickDefault();

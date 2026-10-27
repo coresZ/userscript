@@ -8,7 +8,7 @@ import { bindSoftNav } from './core/navigate';
 import { openCloudPanel } from './core/cloud';
 import { builtinPlugins, DEFAULT_ENABLED } from './plugins';
 
-const TOOLKIT_VERSION = '2.7.1';
+const TOOLKIT_VERSION = '2.8.0';
 
 // ---------- 核心组装 ----------
 const eventBus = new EventBus();

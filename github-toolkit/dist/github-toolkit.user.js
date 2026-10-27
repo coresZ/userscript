@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         GitHub Toolkit
 // @namespace    github-toolkit
-// @version      2.7.1
+// @version      2.8.0
 // @author       Cores
 // @description  高内聚低耦合的 GitHub 模块化工具台（图标操作 + 复制上游链接）
 // @license      MIT
@@ -408,6 +408,75 @@
       text-overflow: ellipsis !important;
       white-space: nowrap !important;
     }
+    /* ===== 左栏「当前仓库」入口：图钉 + 仓库名 + 状态图标，hover 出说明 ===== */
+    .ghtk-current-repo {
+      position: relative !important;
+      display: flex !important;
+      align-items: center !important;
+      justify-content: flex-start !important;
+      gap: 5px !important;
+      height: var(--ghtk-ctl-h) !important;
+      margin: 0 6px 4px !important;
+      padding: 0 8px !important;
+      border: 1px solid var(--borderColor-default, #d0d7de) !important;
+      border-radius: var(--ghtk-ctl-radius) !important;
+      background: var(--bgColor-default, #fff) !important;
+      color: var(--fgColor-muted, #59636e) !important;
+      cursor: pointer !important;
+      flex-shrink: 0 !important;
+      transition: background .12s, color .12s, border-color .12s !important;
+      box-sizing: border-box !important;
+    }
+    .ghtk-current-repo[hidden] { display: none !important; }
+    .ghtk-current-repo:hover {
+      background: #ddf4ff !important;
+      border-color: #54aeff !important;
+      color: #0969da !important;
+    }
+    .ghtk-current-repo .pin {
+      width: 13px !important;
+      height: 13px !important;
+      fill: currentColor !important;
+      flex-shrink: 0 !important;
+    }
+    /* 仓库名：占满中间，超长省略 */
+    .ghtk-current-repo .name {
+      flex: 1 !important;
+      min-width: 0 !important;
+      font-size: 11.5px !important;
+      font-weight: 600 !important;
+      color: var(--fgColor-default, #1f2328) !important;
+      text-align: left !important;
+      overflow: hidden !important;
+      text-overflow: ellipsis !important;
+      white-space: nowrap !important;
+    }
+    .ghtk-current-repo:hover .name { color: #0969da !important; }
+    .ghtk-current-repo.bound:hover .name { color: #1a7f37 !important; }
+    .ghtk-current-repo .badge {
+      width: 11px !important;
+      height: 11px !important;
+      flex-shrink: 0 !important;
+    }
+    /* 已绑定：实心勾（绿）；未绑定：空心圆（灰）。
+       必须带 #ghtk-root 前缀，否则会被 reset 段的 #ghtk-root svg（含 id 选择器）压过。 */
+    #ghtk-root .ghtk-current-repo .bound-icon {
+      display: none !important;
+      fill: #1a7f37 !important;
+    }
+    #ghtk-root .ghtk-current-repo .unbound-icon {
+      display: block !important;
+      fill: #afb8c1 !important;
+    }
+    #ghtk-root .ghtk-current-repo.bound .bound-icon { display: block !important; }
+    #ghtk-root .ghtk-current-repo.bound .unbound-icon { display: none !important; }
+    .ghtk-current-repo.bound { color: #1a7f37 !important; }
+    .ghtk-current-repo.bound:hover {
+      background: #dafbe1 !important;
+      border-color: #4ac26b !important;
+      color: #1a7f37 !important;
+    }
+
     .ghtk-rail-list {
       flex: 1 !important;
       overflow-y: auto !important;
@@ -2005,40 +2074,50 @@
       `;
         getRoot().appendChild(mask);
         injectGlobalStyles();
+        const setBox = (r) => {
+          mask.style.setProperty("left", r.left + "px", "important");
+          mask.style.setProperty("top", r.top + "px", "important");
+          mask.style.setProperty("width", r.width + "px", "important");
+          mask.style.setProperty("height", r.height + "px", "important");
+          mask.style.setProperty("right", "auto", "important");
+          mask.style.setProperty("bottom", "auto", "important");
+        };
         const panel = document.querySelector(".ghtk-panel");
         if (panel) {
-          const rect = panel.getBoundingClientRect();
           mask.classList.add("in-panel");
-          mask.style.position = "fixed";
-          mask.style.left = rect.left + "px";
-          mask.style.top = rect.top + "px";
-          mask.style.width = rect.width + "px";
-          mask.style.height = rect.height + "px";
-          mask.style.borderRadius = "14px";
+          mask.style.setProperty("position", "fixed", "important");
+          mask.style.setProperty("border-radius", "14px", "important");
+          setBox(panel.getBoundingClientRect());
         }
         const input = mask.querySelector(".ghtk-modal-input");
         if (input) {
           setTimeout(() => {
-            input.focus();
+            input.focus({ preventScroll: true });
             input.select();
           }, 50);
         }
+        let rafId = 0;
+        let lastKey = "";
         const close = (result) => {
+          if (rafId) cancelAnimationFrame(rafId);
           mask.remove();
           document.removeEventListener("keydown", onKey);
-          window.removeEventListener("resize", syncToPanel);
           resolve(result);
         };
         const syncToPanel = () => {
+          if (!mask.isConnected) return;
           const p = document.querySelector(".ghtk-panel");
-          if (!p || !mask.classList.contains("in-panel")) return;
-          const r = p.getBoundingClientRect();
-          mask.style.left = r.left + "px";
-          mask.style.top = r.top + "px";
-          mask.style.width = r.width + "px";
-          mask.style.height = r.height + "px";
+          if (p && mask.classList.contains("in-panel")) {
+            const r = p.getBoundingClientRect();
+            const key = [r.left, r.top, r.width, r.height].map((n) => Math.round(n)).join(",");
+            if (key !== lastKey) {
+              lastKey = key;
+              setBox(r);
+            }
+          }
+          rafId = requestAnimationFrame(syncToPanel);
         };
-        window.addEventListener("resize", syncToPanel, { passive: true });
+        if (mask.classList.contains("in-panel")) rafId = requestAnimationFrame(syncToPanel);
         mask.querySelector(".ghtk-modal-close").addEventListener("click", () => close(null));
         mask.querySelector('[data-action="cancel"]').addEventListener("click", () => close(null));
         mask.querySelector('[data-action="confirm"]').addEventListener("click", () => {
@@ -2341,36 +2420,99 @@
     const cacheKey = `${currentUser}/${owner}/${repo}`.toLowerCase();
     const cached = forkCache.get(cacheKey);
     if (cached && Date.now() - cached.at < FORK_CACHE_TTL) {
-      return Promise.resolve(cached.url);
+      return Promise.resolve({
+        forkUrl: cached.url,
+        reason: cached.url ? "fork" : "not-fork"
+      });
     }
+    const remember = (result) => {
+      if (result.reason === "fork" || result.reason === "not-fork") {
+        forkCache.set(cacheKey, { url: result.forkUrl, at: Date.now() });
+      }
+      return result;
+    };
     return new Promise((resolve) => {
-      const done = (url) => {
-        forkCache.set(cacheKey, { url, at: Date.now() });
-        resolve(url);
-      };
       try {
         GM_xmlhttpRequest({
           method: "GET",
           url: `https://api.github.com/repos/${currentUser}/${repo}`,
           headers: API_HEADERS,
-          onload: (res) => {
-            if (res.status !== 200) {
-              done(null);
+          onload: async (res) => {
+            if (res.status === 200) {
+              try {
+                const data = JSON.parse(res.responseText);
+                const parentFull = data.parent?.full_name || data.source?.full_name || "";
+                const isForkOfThis = parentFull.toLowerCase() === `${owner}/${repo}`.toLowerCase();
+                if (data.fork) {
+                  resolve(remember({ forkUrl, reason: "fork" }));
+                  return;
+                }
+                resolve(remember({ forkUrl: null, reason: "not-fork" }));
+                return;
+              } catch {
+                resolve(remember({ forkUrl: null, reason: "unknown" }));
+                return;
+              }
+            }
+            if (res.status === 403 || res.status === 429) {
+              const htmlHit = await probeForkByHtml(currentUser, owner, repo);
+              if (htmlHit === true) {
+                resolve(remember({ forkUrl, reason: "fork" }));
+              } else if (htmlHit === false) {
+                resolve(remember({ forkUrl: null, reason: "not-fork" }));
+              } else {
+                resolve({ forkUrl: null, reason: "rate-limited" });
+              }
               return;
             }
-            try {
-              const data = JSON.parse(res.responseText);
-              const isForkOfThis = data.fork && data.parent?.full_name?.toLowerCase() === `${owner}/${repo}`.toLowerCase();
-              done(data.fork || isForkOfThis ? forkUrl : null);
-            } catch {
-              done(null);
+            if (res.status === 404) {
+              const htmlHit = await probeForkByHtml(currentUser, owner, repo);
+              if (htmlHit === true) {
+                resolve(remember({ forkUrl, reason: "fork" }));
+              } else {
+                resolve(remember({ forkUrl: null, reason: "not-fork" }));
+              }
+              return;
             }
+            resolve({ forkUrl: null, reason: "unknown" });
           },
-          onerror: () => done(null),
-          ontimeout: () => done(null)
+          onerror: () => resolve({ forkUrl: null, reason: "unknown" }),
+          ontimeout: () => resolve({ forkUrl: null, reason: "unknown" })
         });
       } catch {
-        done(null);
+        resolve({ forkUrl: null, reason: "unknown" });
+      }
+    });
+  }
+  function probeForkByHtml(user, owner, repo) {
+    return new Promise((resolve) => {
+      try {
+        GM_xmlhttpRequest({
+          method: "GET",
+          url: `https://github.com/${user}/${repo}`,
+          headers: { Accept: "text/html" },
+          timeout: 8e3,
+          onload: (res) => {
+            if (res.status === 404) {
+              resolve(false);
+              return;
+            }
+            if (res.status !== 200) {
+              resolve(null);
+              return;
+            }
+            const html = res.responseText || "";
+            if (/forked\s*from[\s\S]{0,400}?href="\/([^"/]+)\/([^"/?]+)"/i.test(html)) {
+              resolve(true);
+              return;
+            }
+            resolve(null);
+          },
+          onerror: () => resolve(null),
+          ontimeout: () => resolve(null)
+        });
+      } catch {
+        resolve(null);
       }
     });
   }
@@ -2660,6 +2802,12 @@
               <span>上游</span>
               <span class="ghtk-rail-state" id="ghtk-rail-state"></span>
             </div>
+            <button class="ghtk-current-repo" id="ghtk-current-repo" type="button" hidden>
+              <svg class="pin" viewBox="0 0 16 16"><path d="M8 16s6-5.686 6-10A6 6 0 0 0 2 6c0 4.314 6 10 6 10Zm0-7a3 3 0 1 1 0-6 3 3 0 0 1 0 6Z"/></svg>
+              <span class="name" id="ghtk-current-repo-name"></span>
+              <svg class="badge bound-icon" viewBox="0 0 16 16"><path d="M8 16A8 8 0 1 1 8 0a8 8 0 0 1 0 16Zm3.78-9.72a.75.75 0 0 0-1.06-1.06L7.25 8.69 5.78 7.22a.75.75 0 0 0-1.06 1.06l2 2a.75.75 0 0 0 1.06 0l4-4Z"/></svg>
+              <svg class="badge unbound-icon" viewBox="0 0 16 16"><path d="M8 0a8 8 0 1 1 0 16A8 8 0 0 1 8 0ZM1.5 8a6.5 6.5 0 1 0 13 0 6.5 6.5 0 0 0-13 0Z"/></svg>
+            </button>
             <div class="ghtk-rail-list" id="ghtk-rail-list"></div>
           </div>
           <div class="ghtk-detail" id="ghtk-detail"></div>
@@ -2681,12 +2829,35 @@
         const detail = root.querySelector("#ghtk-detail");
         const addToggle = root.querySelector("#ghtk-add-toggle");
         const searchInput = root.querySelector("#ghtk-search-input");
+        const currentRepoBtn = root.querySelector("#ghtk-current-repo");
+        const currentRepoName = root.querySelector("#ghtk-current-repo-name");
         if (!railList || !detail || !railState) return;
         const currentUser = getCurrentUser(ctx.dom);
         const page = ctx.page;
         const currentRepo = page.owner && page.repo ? `${page.owner}/${page.repo}` : "";
         const isUpstreamOfCurrent = (b) => !!currentRepo && `${b.owner}/${b.repo}`.toLowerCase() === currentRepo.toLowerCase();
         const isDownstreamOfCurrent = (b) => !!currentRepo && (b.downstreams || []).some((d) => d.toLowerCase() === currentRepo.toLowerCase());
+        const updateCurrentRepoBtn = () => {
+          if (!currentRepoBtn) return;
+          if (!currentRepo) {
+            currentRepoBtn.hidden = true;
+            return;
+          }
+          currentRepoBtn.hidden = false;
+          const list = loadBindings();
+          const upIdx = list.findIndex(isUpstreamOfCurrent);
+          const downIdx = list.findIndex(isDownstreamOfCurrent);
+          const idx = upIdx >= 0 ? upIdx : downIdx;
+          const bound = idx >= 0;
+          currentRepoBtn.classList.toggle("bound", bound);
+          currentRepoBtn.dataset.idx = bound ? String(idx) : "";
+          if (currentRepoName) currentRepoName.textContent = currentRepo;
+          const stateText = bound ? upIdx >= 0 ? "已绑定（当前仓库就是上游）" : "已绑定（当前仓库是这条绑定的下游）" : "未绑定，点击添加";
+          const tip = `当前仓库：${currentRepo}
+${stateText}`;
+          currentRepoBtn.title = tip;
+          currentRepoBtn.setAttribute("aria-label", tip);
+        };
         const pickDefault = () => {
           const list = loadBindings();
           let idx = list.findIndex(isUpstreamOfCurrent);
@@ -2698,6 +2869,7 @@
           railState.style.color = state.status.color || "";
         };
         const renderRail = () => {
+          updateCurrentRepoBtn();
           const list = loadBindings();
           const q = state.query.trim().toLowerCase();
           const rows = list.map((b, idx) => ({ b, idx })).filter(({ b }) => !q || `${b.owner}/${b.repo}`.toLowerCase().includes(q));
@@ -2871,24 +3043,58 @@
             const target = loadBindings()[state.selected];
             if (!target) return;
             ctx.ui.toast("正在检测…");
-            const forkUrl = await checkHasForked(currentUser, target.owner, target.repo);
-            const latest = loadBindings();
-            const cur = latest[state.selected];
-            if (!cur) return;
-            if (forkUrl) {
-              const down = `${currentUser}/${cur.repo}`;
-              cur.downstreams = cur.downstreams || [];
-              if (!cur.downstreams.includes(down)) {
-                cur.downstreams.push(down);
-                saveBindings(latest);
+            const res = await checkHasForked(currentUser, target.owner, target.repo);
+            if (res.forkUrl) {
+              const latest2 = loadBindings();
+              const cur2 = latest2[state.selected];
+              if (!cur2) return;
+              const down = `${currentUser}/${cur2.repo}`;
+              cur2.downstreams = cur2.downstreams || [];
+              if (!cur2.downstreams.includes(down)) {
+                cur2.downstreams.push(down);
+                saveBindings(latest2);
                 renderRail();
                 renderDetail();
                 ctx.ui.toast("已绑定 " + down);
               } else {
                 ctx.ui.toast("已存在");
               }
+              return;
+            }
+            if (res.reason === "rate-limited") {
+              ctx.ui.toast("API 限流，改用手动确认");
+            } else if (res.reason === "unknown") {
+              ctx.ui.toast("检测失败，请手动确认");
             } else {
-              ctx.ui.toast("未检测到 Fork");
+              ctx.ui.toast("未检测到 Fork，请手动确认");
+            }
+            const suggested = `${currentUser}/${target.repo}`;
+            const val = await Modal.show({
+              title: "确认下游仓库",
+              content: "没自动检测到你的 fork。如果确实 fork 过（比如改了名字），直接填仓库全名。",
+              showInput: true,
+              inputValue: suggested,
+              placeholder: "owner/repo",
+              confirmText: "绑定"
+            });
+            if (!val) return;
+            const cleaned = String(val).trim().replace(/^https?:\/\/github\.com\//i, "");
+            if (!cleaned.includes("/")) {
+              ctx.ui.toast("格式错误");
+              return;
+            }
+            const latest = loadBindings();
+            const cur = latest[state.selected];
+            if (!cur) return;
+            cur.downstreams = cur.downstreams || [];
+            if (!cur.downstreams.includes(cleaned)) {
+              cur.downstreams.push(cleaned);
+              saveBindings(latest);
+              renderRail();
+              renderDetail();
+              ctx.ui.toast("已绑定 " + cleaned);
+            } else {
+              ctx.ui.toast("已存在");
             }
           });
           detail.querySelector("#ghtk-manual-bind")?.addEventListener("click", async () => {
@@ -3074,6 +3280,23 @@
         addToggle?.addEventListener("click", () => {
           if (state.addMode) exitAddMode();
           else enterAddMode();
+        });
+        currentRepoBtn?.addEventListener("click", () => {
+          const idxText = currentRepoBtn.dataset.idx;
+          if (idxText !== void 0 && idxText !== "") {
+            state.selected = +idxText;
+            state.addMode = false;
+            addToggle?.classList.remove("active");
+            renderRail();
+            renderDetail();
+            return;
+          }
+          enterAddMode();
+          const input = root.querySelector("#ghtk-upstream-input");
+          if (input) {
+            input.value = currentRepo;
+            input.focus();
+          }
         });
         pickDefault();
         renderStatus();
@@ -3272,7 +3495,7 @@
   }
   const builtinPlugins = [UpstreamBindPlugin, AccelPlugin];
   const DEFAULT_ENABLED = ["upstream-bind", "github-accel"];
-  const TOOLKIT_VERSION = "2.7.1";
+  const TOOLKIT_VERSION = "2.8.0";
   const eventBus = new EventBus();
   const dom = new DOMHelper();
   const ui = new UIManager();
