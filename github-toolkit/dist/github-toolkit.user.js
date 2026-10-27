@@ -1,14 +1,16 @@
 // ==UserScript==
 // @name         GitHub Toolkit
 // @namespace    github-toolkit
-// @version      2.8.0
+// @version      2.8.1
 // @author       Cores
 // @description  高内聚低耦合的 GitHub 模块化工具台（图标操作 + 复制上游链接）
 // @license      MIT
 // @icon         https://github.githubassets.com/favicons/favicon.svg
+// @downloadURL  https://raw.githubusercontent.com/coresZ/userscript/refs/heads/main/github-toolkit/dist/github-toolkit.user.js
+// @updateURL    https://raw.githubusercontent.com/coresZ/userscript/refs/heads/main/github-toolkit/dist/github-toolkit.meta.js
 // @match        https://github.com/*
 // @match        https://gist.github.com/*
-// @require      https://update.greasyfork.org/scripts/593538/1973794/webdev-component.js
+// @require      https://update.greasyfork.org/scripts/593538/webdev-component.js
 // @connect      api.github.com
 // @connect      *
 // @grant        GM_addStyle
@@ -3495,7 +3497,7 @@ ${stateText}`;
   }
   const builtinPlugins = [UpstreamBindPlugin, AccelPlugin];
   const DEFAULT_ENABLED = ["upstream-bind", "github-accel"];
-  const TOOLKIT_VERSION = "2.8.0";
+  const TOOLKIT_VERSION = "2.8.1";
   const eventBus = new EventBus();
   const dom = new DOMHelper();
   const ui = new UIManager();

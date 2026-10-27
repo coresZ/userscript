@@ -8,7 +8,7 @@ export default defineConfig({
       userscript: {
         name: 'GitHub Toolkit',
         namespace: 'github-toolkit',
-        version: '2.8.0',
+        version: '2.8.1',
         description: '高内聚低耦合的 GitHub 模块化工具台（图标操作 + 复制上游链接）',
         author: 'Cores',
         icon: 'https://github.githubassets.com/favicons/favicon.svg',
@@ -29,8 +29,13 @@ export default defineConfig({
           '*',
         ],
         require: [
-          'https://update.greasyfork.org/scripts/593538/1973794/webdev-component.js',
+          // 不带版本号，始终取 GreasyFork 上的最新版
+          'https://update.greasyfork.org/scripts/593538/webdev-component.js',
         ],
+        downloadURL:
+          'https://raw.githubusercontent.com/coresZ/userscript/refs/heads/main/github-toolkit/dist/github-toolkit.user.js',
+        updateURL:
+          'https://raw.githubusercontent.com/coresZ/userscript/refs/heads/main/github-toolkit/dist/github-toolkit.meta.js',
         'run-at': 'document-idle',
       },
       build: {

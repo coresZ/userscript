@@ -112,6 +112,12 @@
 - **版本**：`package.json` / `vite.config.ts` / `TOOLKIT_VERSION` 三处同步至 2.5.3。
 - **git**：根 `.gitignore` 与子目录 `.gitignore` 均移除 `dist/`，构建产物纳入版本控制。
 
+#### v2.8.1 分发配置：稳定 @require + 自更新地址
+
+- `@require` 的 webdev-component 改为**不带版本号**的稳定地址（`.../scripts/593538/webdev-component.js`），始终跟随 GreasyFork 最新版，避免组件升级后还要改脚本。
+- 新增 `@downloadURL` / `@updateURL` 指向本仓库 `dist/`（raw.githubusercontent），Tampermonkey 可从仓库自动更新。
+- **重要**：这些头字段必须维护在 `vite.config.ts` 的 `userscript` 里，**不要只手改 `dist/`**——下次 `npm run build` 会把手改覆盖掉。
+
 #### v2.8.0 左栏新增「当前仓库」入口
 
 - **需求**：没 fork 的项目也要能在面板里看到，不能只显示已绑定项。
