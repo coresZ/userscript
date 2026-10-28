@@ -8,7 +8,7 @@ export default defineConfig({
       userscript: {
         name: 'GitHub Toolkit',
         namespace: 'github-toolkit',
-        version: '2.8.1',
+        version: '2.9.0',
         description: '高内聚低耦合的 GitHub 模块化工具台（图标操作 + 复制上游链接）',
         author: 'Cores',
         icon: 'https://github.githubassets.com/favicons/favicon.svg',

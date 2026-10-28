@@ -1,4 +1,6 @@
 import type { Plugin, PluginContext } from '../types';
+import { copyText, escapeHtml } from '../core/html';
+import { ICON } from '../core/icons';
 
 const ACCEL_BASE_KEY = 'accel-base-url';
 const EGO_IDENTITY_KEY = 'ego-identity';
@@ -8,40 +10,56 @@ export const DEFAULT_ACCEL_BASE = 'https://github.akams.cn/';
 
 type Protocol = 'ssh' | 'https';
 
+const URL_RE = /^https?:\/\/[^\s"'<>]+$/i;
+
+/** 读取加速地址；存的值不是 http(s) 链接（比如导入了坏数据）时退回默认值 */
 export function getAccelBase(): string {
-  return GM_getValue(ACCEL_BASE_KEY, DEFAULT_ACCEL_BASE);
+  const v = String(GM_getValue(ACCEL_BASE_KEY, DEFAULT_ACCEL_BASE) || '').trim();
+  return URL_RE.test(v) ? v : DEFAULT_ACCEL_BASE;
 }
 
-function setAccelBase(url: string): void {
-  GM_setValue(ACCEL_BASE_KEY, url);
-}
-
-function getEgoProtocol(): Protocol {
+function getProtocol(): Protocol {
   return GM_getValue(EGO_PROTOCOL_KEY, 'ssh') === 'https' ? 'https' : 'ssh';
 }
 
-function getEgoIdentity(): string {
-  return (GM_getValue(EGO_IDENTITY_KEY, '') || '').trim();
+function getIdentity(): string {
+  return String(GM_getValue(EGO_IDENTITY_KEY, '') || '').trim();
 }
 
-/**
- * 拼接克隆命令：
- * - 身份名为空 → 普通 git clone
- * - 身份名非空 → ego clone <身份> <url>
- */
+function cloneUrl(owner: string, repo: string, protocol: Protocol): string {
+  return protocol === 'ssh' ? `git@github.com:${owner}/${repo}.git` : `https://github.com/${owner}/${repo}.git`;
+}
+
+/** 身份名为空 → 普通 git clone；非空 → ego clone <身份> <url> */
 function buildCloneCommand(owner: string, repo: string, identity: string, protocol: Protocol): string {
-  const url =
-    protocol === 'ssh'
-      ? `git@github.com:${owner}/${repo}.git`
-      : `https://github.com/${owner}/${repo}.git`;
   const id = identity.trim();
+  const url = cloneUrl(owner, repo, protocol);
   return id ? `ego clone ${id} ${url}` : `git clone ${url}`;
+}
+
+function hostOf(url: string): string {
+  try {
+    return new URL(url).host;
+  } catch {
+    return url;
+  }
+}
+
+function accelUrlOf(owner: string, repo: string): string {
+  return `${getAccelBase()}?url=${encodeURIComponent(`https://github.com/${owner}/${repo}`)}`;
+}
+
+/** 底部说明：按是否填了身份名切换 */
+function hintHtml(hasIdentity: boolean): string {
+  return hasIdentity
+    ? '· 身份名需与本机 <code>ego users</code> 一致<br>· 复制后在本机终端执行，脚本无法直接运行命令'
+    : '· 留空用 git clone，填 ego 身份名后改用 ego clone<br>· 复制后在本机终端执行，脚本无法直接运行命令';
 }
 
 export const AccelPlugin: Plugin = {
   id: 'github-accel',
   name: 'GitHub 加速 (akams)',
-  version: '1.0.2',
+  version: '1.1.0',
   description: '使用加速地址打开仓库，支持自定义加速服务地址',
   matches() {
     return true;
@@ -52,155 +70,153 @@ export const AccelPlugin: Plugin = {
     id: 'accel',
     label: '加速',
     render() {
-      const accelBase = getAccelBase();
-      return `
-        <div class="ghtk-accel-setting">
-          <label>加速地址（默认 ${DEFAULT_ACCEL_BASE}）</label>
-          <div class="ghtk-form-row">
-            <input type="text" id="ghtk-accel-base" value="${accelBase}" placeholder="${DEFAULT_ACCEL_BASE}" />
-            <button class="ghtk-btn" id="ghtk-save-accel" type="button">保存</button>
-          </div>
-        </div>
-        <div class="ghtk-scroll-area ghtk-accel-body">
-          <div id="ghtk-accel-actions"></div>
-        </div>
-      `;
+      return `<div class="ghtk-scroll-area"><div class="ghtk-accel" id="ghtk-accel"></div></div>`;
     },
-    mount(ctx) {
-      renderAccelActions(ctx);
-
-      document.getElementById('ghtk-save-accel')?.addEventListener('click', () => {
-        const input = document.getElementById('ghtk-accel-base') as HTMLInputElement | null;
-        let val = (input?.value || '').trim();
-        if (!val) val = DEFAULT_ACCEL_BASE;
-        if (!val.endsWith('/')) val += '/';
-        setAccelBase(val);
-        ctx.ui.toast('已保存');
-        renderAccelActions(ctx);
-      });
+    mount(ctx: PluginContext, root: HTMLElement) {
+      const box = root.querySelector<HTMLElement>('#ghtk-accel');
+      if (!box) return;
+      renderAccel(ctx, box, false);
+      bindAccel(ctx, box);
     },
   },
 };
 
-function renderAccelActions(ctx: PluginContext): void {
-  const container = document.getElementById('ghtk-accel-actions');
-  if (!container) return;
+/**
+ * 常用操作在上（加速打开、克隆命令），只配一次的加速服务地址收进底部折叠区。
+ * 编码后的长链接不再直接展示，放在按钮的 title 里。
+ */
+function renderAccel(ctx: PluginContext, box: HTMLElement, settingsOpen: boolean): void {
+  const base = getAccelBase();
+  const settings = `
+    <details class="ghtk-settings"${settingsOpen ? ' open' : ''}>
+      <summary>加速服务<span class="ghtk-settings-value">${escapeHtml(hostOf(base))}</span>${ICON.chevron}</summary>
+      <div class="ghtk-settings-body">
+        <label class="ghtk-field-label" for="ghtk-accel-base">加速地址（默认 ${escapeHtml(DEFAULT_ACCEL_BASE)}）</label>
+        <div class="ghtk-field-row">
+          <input class="ghtk-input" type="text" id="ghtk-accel-base" value="${escapeHtml(base)}"
+            placeholder="${escapeHtml(DEFAULT_ACCEL_BASE)}" autocomplete="off" spellcheck="false" />
+          <button class="ghtk-btn" type="button" data-act="save-base">保存</button>
+        </div>
+      </div>
+    </details>`;
 
-  const page = ctx.page;
-
-  if (!page.owner || !page.repo) {
-    container.innerHTML = `<div class="ghtk-empty">进入仓库后可用</div>`;
+  const { owner, repo } = ctx.page;
+  if (!owner || !repo) {
+    box.innerHTML = `<div class="ghtk-blank">进入仓库页面后可用</div>${settings}`;
     return;
   }
 
-  const owner = page.owner;
-  const repo = page.repo;
-  const base = getAccelBase();
-  const repoUrl = `https://github.com/${owner}/${repo}`;
-  const accelUrl = `${base}?url=${encodeURIComponent(repoUrl)}`;
-
-  const identity = getEgoIdentity();
-  const protocol = getEgoProtocol();
-  const command = buildCloneCommand(owner, repo, identity, protocol);
-
-  container.innerHTML = `
-    <div class="ghtk-accel-repo">
-      <div class="ghtk-sec-label">当前仓库加速地址</div>
-      <div class="ghtk-accel-url">${accelUrl}</div>
-      <div class="ghtk-btn-row">
-        <a class="ghtk-btn primary" href="${accelUrl}" target="_blank">加速打开</a>
-        <button class="ghtk-btn" id="ghtk-copy-accel" type="button">复制</button>
+  const accelUrl = accelUrlOf(owner, repo);
+  const identity = getIdentity();
+  const protocol = getProtocol();
+  box.innerHTML = `
+    <section class="ghtk-accel-sec">
+      <div class="ghtk-sec-head">
+        <span class="ghtk-sec-title">加速访问</span>
+        <span class="ghtk-sec-note" title="${escapeHtml(accelUrl)}">经 ${escapeHtml(hostOf(base))} 中转</span>
       </div>
-    </div>
-
-    <div class="ghtk-divider"></div>
-
-    <div class="ghtk-ego">
-      <div class="ghtk-ego-head">
-        <div class="ghtk-ego-title">克隆命令</div>
-        <div class="ghtk-seg" id="ghtk-ego-proto">
-          <button type="button" data-proto="ssh" class="${protocol === 'ssh' ? 'on' : ''}">SSH</button>
-          <button type="button" data-proto="https" class="${protocol === 'https' ? 'on' : ''}">HTTPS</button>
+      <div class="ghtk-btn-row">
+        <a class="ghtk-btn primary" href="${escapeHtml(accelUrl)}" target="_blank" rel="noreferrer" title="${escapeHtml(accelUrl)}">加速打开</a>
+        <button class="ghtk-btn" type="button" data-act="copy-accel">复制链接</button>
+      </div>
+    </section>
+    <section class="ghtk-accel-sec">
+      <div class="ghtk-sec-head">
+        <span class="ghtk-sec-title">克隆命令</span>
+        <div class="ghtk-seg" role="group" aria-label="克隆协议">
+          <button type="button" data-proto="ssh" class="${protocol === 'ssh' ? 'on' : ''}" aria-pressed="${protocol === 'ssh'}">SSH</button>
+          <button type="button" data-proto="https" class="${protocol === 'https' ? 'on' : ''}" aria-pressed="${protocol === 'https'}">HTTPS</button>
         </div>
       </div>
-
-      <input class="ghtk-field-input" type="text" id="ghtk-ego-identity"
-        value="${identity.replace(/"/g, '&quot;')}" placeholder="ego 身份名（留空用 git）" autocomplete="off" spellcheck="false" />
-
-      <div class="ghtk-cmd-wrap">
-        <div class="ghtk-cmd" id="ghtk-ego-cmd"><span class="ghtk-cmd-prompt">$</span>${escapeHtml(command)}</div>
+      <input class="ghtk-input" type="text" id="ghtk-ego-identity" value="${escapeHtml(identity)}"
+        placeholder="ego 身份名（留空用 git）" aria-label="ego 身份名" autocomplete="off" spellcheck="false" />
+      <div class="ghtk-cmd" tabindex="0" aria-label="克隆命令"><span class="ghtk-cmd-prompt">$</span><span id="ghtk-ego-cmd">${escapeHtml(
+        buildCloneCommand(owner, repo, identity, protocol)
+      )}</span></div>
+      <div class="ghtk-btn-row">
+        <button class="ghtk-btn" type="button" data-act="copy-cmd">复制命令</button>
+        <button class="ghtk-btn" type="button" data-act="copy-url">复制地址</button>
       </div>
-
-      <button class="ghtk-btn" id="ghtk-copy-ego" type="button">复制命令</button>
-
-      <div class="ghtk-hint-list" id="ghtk-ego-hint">${hintHtml(!!identity)}</div>
-    </div>
+      <div class="ghtk-hint" id="ghtk-ego-hint">${hintHtml(!!identity)}</div>
+    </section>
+    ${settings}
   `;
+}
 
-  // 复制加速链接
-  document.getElementById('ghtk-copy-accel')?.addEventListener('click', () => {
-    navigator.clipboard
-      .writeText(`${getAccelBase()}?url=${encodeURIComponent(repoUrl)}`)
-      .then(() => ctx.ui.toast('已复制'))
-      .catch(() => ctx.ui.toast('复制失败'));
-  });
-
-  // 身份名输入：实时更新命令与提示，并持久化
-  const identityInput = document.getElementById('ghtk-ego-identity') as HTMLInputElement | null;
-  const cmdEl = document.getElementById('ghtk-ego-cmd');
-  const hintEl = document.getElementById('ghtk-ego-hint');
-
-  const refreshCommand = () => {
-    const id = identityInput?.value.trim() || '';
-    if (cmdEl) {
-      const next = buildCloneCommand(owner, repo, id, getEgoProtocol());
-      cmdEl.innerHTML = `<span class="ghtk-cmd-prompt">$</span>${escapeHtml(next)}`;
-    }
-    if (hintEl) hintEl.innerHTML = hintHtml(!!id);
+/** 事件委托：只绑一次，renderAccel 重绘内容后依然有效 */
+function bindAccel(ctx: PluginContext, box: HTMLElement): void {
+  const currentRepo = () => {
+    const { owner, repo } = ctx.page;
+    return owner && repo ? { owner, repo } : null;
+  };
+  const identityValue = () =>
+    box.querySelector<HTMLInputElement>('#ghtk-ego-identity')?.value.trim() ?? getIdentity();
+  const copy = (text: string) => {
+    void copyText(text).then((ok) => ctx.ui.toast(ok ? '已复制' : '复制失败'));
   };
 
-  identityInput?.addEventListener('input', () => {
-    GM_setValue(EGO_IDENTITY_KEY, identityInput.value);
-    refreshCommand();
-  });
+  const refreshCmd = () => {
+    const r = currentRepo();
+    if (!r) return;
+    const id = identityValue();
+    const cmd = box.querySelector('#ghtk-ego-cmd');
+    if (cmd) cmd.textContent = buildCloneCommand(r.owner, r.repo, id, getProtocol());
+    const hint = box.querySelector('#ghtk-ego-hint');
+    if (hint) hint.innerHTML = hintHtml(!!id);
+  };
 
-  // 协议切换
-  document.querySelectorAll<HTMLButtonElement>('#ghtk-ego-proto button').forEach((btn) => {
-    btn.addEventListener('click', () => {
-      const proto = (btn.dataset.proto as Protocol) || 'ssh';
-      GM_setValue(EGO_PROTOCOL_KEY, proto);
-      document.querySelectorAll('#ghtk-ego-proto button').forEach((b) => {
-        b.classList.toggle('on', b === btn);
+  const saveBase = () => {
+    const input = box.querySelector<HTMLInputElement>('#ghtk-accel-base');
+    let val = (input?.value || '').trim() || DEFAULT_ACCEL_BASE;
+    if (!URL_RE.test(val)) {
+      ctx.ui.toast('地址无效');
+      input?.focus();
+      return;
+    }
+    if (!val.endsWith('/')) val += '/';
+    GM_setValue(ACCEL_BASE_KEY, val);
+    renderAccel(ctx, box, true);
+    ctx.ui.toast('已保存');
+  };
+
+  box.addEventListener('click', (e) => {
+    const t = e.target as HTMLElement;
+    const proto = t.closest<HTMLButtonElement>('[data-proto]');
+    if (proto) {
+      const p: Protocol = proto.dataset.proto === 'https' ? 'https' : 'ssh';
+      GM_setValue(EGO_PROTOCOL_KEY, p);
+      box.querySelectorAll<HTMLButtonElement>('[data-proto]').forEach((b) => {
+        const on = b === proto;
+        b.classList.toggle('on', on);
+        b.setAttribute('aria-pressed', String(on));
       });
-      refreshCommand();
-    });
+      refreshCmd();
+      return;
+    }
+    const act = t.closest<HTMLElement>('[data-act]')?.dataset.act;
+    if (act === 'save-base') {
+      saveBase();
+      return;
+    }
+    const r = currentRepo();
+    if (!r) return;
+    if (act === 'copy-accel') copy(accelUrlOf(r.owner, r.repo));
+    else if (act === 'copy-cmd') copy(buildCloneCommand(r.owner, r.repo, identityValue(), getProtocol()));
+    else if (act === 'copy-url') copy(cloneUrl(r.owner, r.repo, getProtocol()));
   });
 
-  // 复制命令
-  document.getElementById('ghtk-copy-ego')?.addEventListener('click', () => {
-    const cmd = buildCloneCommand(owner, repo, identityInput?.value.trim() || '', getEgoProtocol());
-    navigator.clipboard
-      .writeText(cmd)
-      .then(() => ctx.ui.toast('已复制'))
-      .catch(() => ctx.ui.toast('复制失败'));
+  box.addEventListener('input', (e) => {
+    const t = e.target as HTMLInputElement;
+    if (t.id !== 'ghtk-ego-identity') return;
+    GM_setValue(EGO_IDENTITY_KEY, t.value);
+    refreshCmd();
   });
-}
 
-function escapeHtml(s: string): string {
-  return s
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;');
-}
-
-/** 底部说明：按是否填了身份名切换 */
-function hintHtml(hasIdentity: boolean): string {
-  if (hasIdentity) {
-    return `· 使用 ego 按身份克隆，身份名需与本机 <code>ego users</code> 一致<br>
-            · 在本机终端执行，脚本无法直接运行命令`;
-  }
-  return `· 未填身份名，使用普通 git 克隆<br>
-          · 填入 ego 身份名后自动改用 ego 命令`;
+  box.addEventListener('keydown', (e) => {
+    const t = e.target as HTMLElement;
+    if (t.id === 'ghtk-accel-base' && e.key === 'Enter' && !e.isComposing) {
+      e.preventDefault();
+      saveBase();
+    }
+  });
 }

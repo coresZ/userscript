@@ -1,62 +1,112 @@
-import type { Binding, PageContext, Plugin, PluginContext } from '../types';
+import type { Binding, Plugin, PluginContext } from '../types';
 import { Modal } from '../core/modal';
-import {
-  checkHasForked,
-  fetchRepoInfo,
-  getCurrentUser,
-  loadRepoAbout,
-  loadLastCommit,
-} from '../core/github-api';
-import { showAboutPopover } from '../core/popover';
-import { relativeTime, formatDate } from '../core/time';
+import { checkHasForked, fetchRepoInfo, getCurrentUser, loadLastCommit, loadRepoAbout } from '../core/github-api';
 import type { RepoAbout } from '../core/github-api';
+import { isPopoverOpen, showAboutPopover } from '../core/popover';
+import { showMenu } from '../core/menu';
+import { pushLayer } from '../core/layers';
+import { formatDate, relativeTime } from '../core/time';
+import { compactNum, copyText, escapeHtml } from '../core/html';
+import { ICON } from '../core/icons';
 
 const BIND_STORAGE_KEY = 'upstream-downstream-bindings';
 
 function loadBindings(): Binding[] {
-  return GM_getValue(BIND_STORAGE_KEY, []);
+  const v = GM_getValue(BIND_STORAGE_KEY, []);
+  return Array.isArray(v) ? v : [];
 }
 
 function saveBindings(list: Binding[]): void {
   GM_setValue(BIND_STORAGE_KEY, list);
 }
 
-const ICONS = {
-  search: `<svg viewBox="0 0 16 16"><path d="M10.68 11.74a6 6 0 0 1-7.922-8.982 6 6 0 0 1 8.982 7.922l3.04 3.04a.749.749 0 0 1-.326 1.275.749.749 0 0 1-.734-.215ZM11.5 7a4.499 4.499 0 1 0-8.997 0A4.499 4.499 0 0 0 11.5 7Z"/></svg>`,
-  plus: `<svg viewBox="0 0 16 16"><path d="M7.75 2a.75.75 0 0 1 .75.75V7h4.25a.75.75 0 0 1 0 1.5H8.5v4.25a.75.75 0 0 1-1.5 0V8.5H2.75a.75.75 0 0 1 0-1.5H7V2.75A.75.75 0 0 1 7.75 2Z"/></svg>`,
-  del: `<svg viewBox="0 0 16 16"><path d="M3.72 3.72a.75.75 0 0 1 1.06 0L8 6.94l3.22-3.22a.75.75 0 1 1 1.06 1.06L9.06 8l3.22 3.22a.75.75 0 1 1-1.06 1.06L8 9.06l-3.22 3.22a.75.75 0 0 1-1.06-1.06L6.94 8 3.72 4.78a.75.75 0 0 1 0-1.06Z"/></svg>`,
-};
+const fullOf = (b: Binding) => `${b.owner}/${b.repo}`;
+const keyOf = (s: string) => s.toLowerCase();
 
-interface UpstreamStatus {
-  text: string;
-  color?: string;
-  fullName?: string;
-  owner?: string;
-  repo?: string;
-  bound?: boolean;
+/** 解析 owner/repo、仓库链接或 SSH 地址；不合法返回 null */
+function parseRepo(input: string): { owner: string; repo: string } | null {
+  const s = String(input || '')
+    .trim()
+    .replace(/^git@github\.com:/i, '')
+    .replace(/^https?:\/\/(www\.)?github\.com\//i, '')
+    .replace(/[?#].*$/, '');
+  const parts = s.split('/').filter(Boolean);
+  if (parts.length < 2) return null;
+  const owner = parts[0];
+  const repo = parts[1].replace(/\.git$/i, '');
+  if (!/^[A-Za-z0-9][A-Za-z0-9_-]{0,38}$/.test(owner)) return null;
+  if (!/^[A-Za-z0-9._-]{1,100}$/.test(repo) || repo === '.' || repo === '..') return null;
+  return { owner, repo };
 }
+
+/** 当前仓库的上游检测结果 */
+type Detection =
+  | { state: 'pending' }
+  | { state: 'none' }
+  | { state: 'failed' }
+  | { state: 'fork'; upstream: string };
+
+/** fork 关系基本不变：同一会话内按仓库缓存，跳页回来不重复请求（失败不缓存） */
+const detectCache = new Map<string, Promise<Detection>>();
+
+function detectUpstream(owner: string, repo: string): Promise<Detection> {
+  const key = keyOf(`${owner}/${repo}`);
+  const hit = detectCache.get(key);
+  if (hit) return hit;
+  const p = fetchRepoInfo(owner, repo).then((info): Detection => {
+    if (!info) return { state: 'failed' };
+    const up = info.parent || info.source;
+    if (!info.fork || !up) return { state: 'none' };
+    return { state: 'fork', upstream: up.full_name };
+  });
+  detectCache.set(key, p);
+  void p.then((d) => {
+    if (d.state === 'failed') detectCache.delete(key);
+  });
+  return p;
+}
+
+/** 软导航重建面板时保留的界面状态（只在内存里，不持久化） */
+const viewMemory = { query: '', selected: '', railScroll: 0 };
 
 interface ViewState {
-  selected: number;
+  /** 选中绑定的 key（小写 owner/repo） */
+  selected: string;
   addMode: boolean;
-  query: string;
-  status: UpstreamStatus;
-  /** 添加视图中用户输入的仓库 */
+  /** 添加视图里输入的仓库 */
   draft: string;
-  /** 已加载的上游 about（按 owner/repo 小写缓存） */
+  detection: Detection;
   about: Map<string, RepoAbout | null>;
-  /** 最后提交时间（按 owner/repo 小写缓存，ISO 字符串） */
   lastCommit: Map<string, string | null>;
+  /** 已发起过 about / 最后提交请求的绑定 */
+  requested: Set<string>;
+  /** 正在检测 fork 的绑定 key */
+  bindingKey: string;
+  /** 气泡打开期间有待补的重绘 */
+  dirty: boolean;
 }
 
-/** 数字紧凑格式：1234 → 1.2k */
-function compactNum(n: number): string {
-  if (n < 1000) return String(n);
-  if (n < 10000) return (n / 1000).toFixed(1).replace(/\.0$/, '') + 'k';
-  return Math.round(n / 1000) + 'k';
+/** topics 单行按实际宽度裁剪：放不下的收进「+N」，保证「+N」完整显示 */
+function fitTopics(scope: ParentNode): void {
+  const row = scope.querySelector<HTMLElement>('.ghtk-topics');
+  if (!row || !row.clientWidth) return;
+  const chips = Array.from(row.querySelectorAll<HTMLElement>('.ghtk-topic:not(.more)'));
+  const more = row.querySelector<HTMLElement>('.ghtk-topic.more');
+  if (!chips.length || !more) return;
+  chips.forEach((c) => (c.hidden = false));
+  more.hidden = true;
+  if (row.scrollWidth <= row.clientWidth) return;
+  let shown = chips.length;
+  more.hidden = false;
+  while (shown > 1) {
+    shown--;
+    chips[shown].hidden = true;
+    more.textContent = `+${chips.length - shown}`;
+    if (row.scrollWidth <= row.clientWidth) return;
+  }
 }
 
-/** 语言 → 圆点颜色（GitHub 语言配色节选） */
+/** 语言 → 圆点颜色（GitHub 语言配色节选，属于数据色，不随主题变化） */
 const LANG_COLORS: Record<string, string> = {
   JavaScript: '#f1e05a',
   TypeScript: '#3178c6',
@@ -82,98 +132,59 @@ const LANG_COLORS: Record<string, string> = {
 };
 
 /**
- * 渲染上游 about 区块（固定 88px 高）。
- * 描述 2 行截断、元信息单行、topics 单行，溢出内容通过右上角按钮开气泡查看。
+ * 上游 about 区块（固定 96px）：描述 2 行截断、元信息单行、topics 单行。
+ * 完整信息走右上角按钮打开的气泡。时间只放在标题下方的副标题里，这里不重复。
  */
-function renderAbout(
-  about: RepoAbout | null | undefined,
-  full: string,
-  lastCommit: string | null | undefined
-): string {
-  const expandIcon = `<svg viewBox="0 0 16 16"><path d="M3.75 2h3.5a.75.75 0 0 1 0 1.5h-3.5a.25.25 0 0 0-.25.25v8.5c0 .138.112.25.25.25h8.5a.25.25 0 0 0 .25-.25v-3.5a.75.75 0 0 1 1.5 0v3.5A1.75 1.75 0 0 1 12.25 14h-8.5A1.75 1.75 0 0 1 2 12.25v-8.5C2 2.784 2.784 2 3.75 2Zm6.854-1h4.146a.25.25 0 0 1 .25.25v4.146a.25.25 0 0 1-.427.177L13.03 4.03 9.28 7.78a.75.75 0 0 1-1.06-1.06l3.75-3.75-1.543-1.543A.25.25 0 0 1 10.604 1Z"/></svg>`;
-  const clockIcon = `<svg viewBox="0 0 16 16"><path d="M8 0a8 8 0 1 1 0 16A8 8 0 0 1 8 0ZM1.5 8a6.5 6.5 0 1 0 13 0 6.5 6.5 0 0 0-13 0Zm7-3.25v2.992l2.028.812a.75.75 0 0 1-.557 1.392l-2.5-1A.75.75 0 0 1 7 8.25v-3.5a.75.75 0 0 1 1.5 0Z"/></svg>`;
-
-  if (about === undefined) {
+function renderAbout(about: RepoAbout | null | undefined): string {
+  if (!about) {
+    const text = about === undefined ? '正在加载仓库简介…' : '无仓库信息';
     return `
       <div class="ghtk-about">
-        <div class="ghtk-about-top"><div class="ghtk-about-desc muted">正在加载仓库简介…</div></div>
+        <div class="ghtk-about-top"><div class="ghtk-about-desc muted">${text}</div></div>
         <div class="ghtk-about-meta"></div>
         <div class="ghtk-topics"></div>
-      </div>
-    `;
-  }
-  if (about === null) {
-    return `
-      <div class="ghtk-about">
-        <div class="ghtk-about-top"><div class="ghtk-about-desc muted">无仓库信息</div></div>
-        <div class="ghtk-about-meta"></div>
-        <div class="ghtk-topics"></div>
-      </div>
-    `;
+      </div>`;
   }
 
   const desc = about.description?.trim() || '';
-  const metaItems: string[] = [];
+  const meta: string[] = [];
   if (about.language) {
-    const color = LANG_COLORS[about.language] || '#8b949e';
-    metaItems.push(
-      `<span class="item"><span class="ghtk-lang-dot" style="background:${color}"></span><span>${escapeHtml(about.language)}</span></span>`
+    const color = Object.prototype.hasOwnProperty.call(LANG_COLORS, about.language)
+      ? LANG_COLORS[about.language]
+      : '#8b949e';
+    meta.push(
+      `<span class="ghtk-meta-item"><span class="ghtk-lang-dot" style="background:${color}"></span>${escapeHtml(about.language)}</span>`
     );
   }
-  if (about.stars) {
-    metaItems.push(
-      `<span class="item"><svg viewBox="0 0 16 16"><path d="M8 .25a.75.75 0 0 1 .673.418l1.882 3.815 4.21.612a.75.75 0 0 1 .416 1.279l-3.046 2.97.719 4.192a.751.751 0 0 1-1.088.791L8 12.347l-3.766 1.98a.75.75 0 0 1-1.088-.79l.72-4.194L.818 6.374a.75.75 0 0 1 .416-1.28l4.21-.611L7.327.668A.75.75 0 0 1 8 .25Z"/></svg><span>${compactNum(about.stars)}</span></span>`
-    );
-  }
-  if (about.forks) {
-    metaItems.push(
-      `<span class="item"><svg viewBox="0 0 16 16"><path d="M5 5.372v.878c0 .414.336.75.75.75h4.5a.75.75 0 0 0 .75-.75v-.878a2.25 2.25 0 1 1 1.5 0v.878a2.25 2.25 0 0 1-2.25 2.25h-1.5v2.128a2.251 2.251 0 1 1-1.5 0V8.5h-1.5A2.25 2.25 0 0 1 3.5 6.25v-.878a2.25 2.25 0 1 1 1.5 0ZM5 3.25a.75.75 0 1 0-1.5 0 .75.75 0 0 0 1.5 0Zm6.75.75a.75.75 0 1 0 0-1.5.75.75 0 0 0 0 1.5Zm-3 8.75a.75.75 0 1 0-1.5 0 .75.75 0 0 0 1.5 0Z"/></svg><span>${compactNum(about.forks)}</span></span>`
-    );
-  }
-  if (about.updatedAt) {
-    metaItems.push(
-      `<span class="item" title="最近推送 ${formatDate(about.updatedAt)}">${clockIcon}<span>${relativeTime(about.updatedAt)}</span></span>`
-    );
-  }
-  if (about.license) {
-    metaItems.push(`<span class="item"><span>${escapeHtml(about.license)}</span></span>`);
-  }
+  if (about.stars) meta.push(`<span class="ghtk-meta-item" title="Star">${ICON.star}${compactNum(about.stars)}</span>`);
+  if (about.forks) meta.push(`<span class="ghtk-meta-item" title="Fork">${ICON.fork}${compactNum(about.forks)}</span>`);
+  if (about.license) meta.push(`<span class="ghtk-meta-item">${escapeHtml(about.license)}</span>`);
 
-  const showTopics = about.topics.slice(0, 3);
-  const restTopics = about.topics.length - showTopics.length;
-  const topicsHtml = about.topics.length
-    ? `<div class="ghtk-topics">${showTopics
-        .map((t) => `<span class="ghtk-topic">${escapeHtml(t)}</span>`)
-        .join('')}${
-        restTopics > 0 ? `<span class="ghtk-topic" style="color:#59636e;background:#f6f8fa;border-color:#d0d7de">+${restTopics}</span>` : ''
-      }</div>`
-    : '<div class="ghtk-topics"></div>';
+  // 先输出全部 topic，渲染后由 fitTopics 按实际宽度裁剪；没量到宽度时默认显示前 3 个
+  const topics =
+    about.topics
+      .map((t, i) => `<span class="ghtk-topic" title="${escapeHtml(t)}"${i >= 3 ? ' hidden' : ''}>${escapeHtml(t)}</span>`)
+      .join('') +
+    (about.topics.length > 3
+      ? `<span class="ghtk-topic more">+${about.topics.length - 3}</span>`
+      : '<span class="ghtk-topic more" hidden></span>');
 
   return `
     <div class="ghtk-about">
       <div class="ghtk-about-top">
-        <div class="ghtk-about-desc">${desc ? escapeHtml(desc) : '<span style="font-style:italic">暂无简介</span>'}</div>
-        <button class="ghtk-about-expand" id="ghtk-about-detail" type="button" data-ghtk-popover-trigger title="查看完整信息">${expandIcon}</button>
+        <div class="ghtk-about-desc${desc ? '' : ' muted'}">${desc ? escapeHtml(desc) : '暂无简介'}</div>
+        <button class="ghtk-icon-btn ghtk-about-more" type="button" data-act="about" data-ghtk-popover-trigger
+          title="查看完整信息" aria-label="查看完整信息" aria-haspopup="dialog" aria-expanded="false">${ICON.info}</button>
       </div>
-      <div class="ghtk-about-meta">${metaItems.join('')}</div>
-      ${topicsHtml}
-    </div>
-  `;
-}
-
-function escapeHtml(s: string): string {
-  return s
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;');
+      <div class="ghtk-about-meta">${meta.join('')}</div>
+      <div class="ghtk-topics">${topics}</div>
+    </div>`;
 }
 
 export const UpstreamBindPlugin: Plugin = {
   id: 'upstream-bind',
   name: '上游/下游仓库绑定',
-  version: '2.5.0',
+  version: '2.9.0',
   description: '自动检测当前仓库上游，支持手动添加与上下游绑定',
   matches() {
     return true;
@@ -186,678 +197,674 @@ export const UpstreamBindPlugin: Plugin = {
     render() {
       return `
         <div class="ghtk-toolbar">
-          <div class="ghtk-search">
-            ${ICONS.search}
-            <input type="text" id="ghtk-search-input" placeholder="搜索绑定" autocomplete="off" spellcheck="false" />
-          </div>
-          <button class="ghtk-toolbar-btn" id="ghtk-add-toggle" type="button" title="添加上游">${ICONS.plus}</button>
+          <label class="ghtk-search">
+            ${ICON.search}
+            <input type="text" id="ghtk-search-input" placeholder="搜索绑定" aria-label="搜索上游或下游" autocomplete="off" spellcheck="false" />
+          </label>
+          <button class="ghtk-icon-btn ghtk-toolbar-add" id="ghtk-add-toggle" type="button"
+            title="添加上游" aria-label="添加上游" aria-pressed="false">${ICON.plus}</button>
         </div>
         <div class="ghtk-split">
           <div class="ghtk-rail">
-            <div class="ghtk-rail-head">
-              <span>上游</span>
-              <span class="ghtk-rail-state" id="ghtk-rail-state"></span>
-            </div>
+            <div class="ghtk-rail-head"><span>上游</span><span id="ghtk-rail-total"></span></div>
             <button class="ghtk-current-repo" id="ghtk-current-repo" type="button" hidden>
-              <svg class="pin" viewBox="0 0 16 16"><path d="M8 16s6-5.686 6-10A6 6 0 0 0 2 6c0 4.314 6 10 6 10Zm0-7a3 3 0 1 1 0-6 3 3 0 0 1 0 6Z"/></svg>
-              <span class="name" id="ghtk-current-repo-name"></span>
-              <svg class="badge bound-icon" viewBox="0 0 16 16"><path d="M8 16A8 8 0 1 1 8 0a8 8 0 0 1 0 16Zm3.78-9.72a.75.75 0 0 0-1.06-1.06L7.25 8.69 5.78 7.22a.75.75 0 0 0-1.06 1.06l2 2a.75.75 0 0 0 1.06 0l4-4Z"/></svg>
-              <svg class="badge unbound-icon" viewBox="0 0 16 16"><path d="M8 0a8 8 0 1 1 0 16A8 8 0 0 1 8 0ZM1.5 8a6.5 6.5 0 1 0 13 0 6.5 6.5 0 0 0-13 0Z"/></svg>
+              ${ICON.pin}<span class="ghtk-cur-name" id="ghtk-current-repo-name"></span>${ICON.circle}
             </button>
-            <div class="ghtk-rail-list" id="ghtk-rail-list"></div>
+            <div class="ghtk-rail-list" id="ghtk-rail-list" role="listbox" aria-label="上游列表"></div>
           </div>
           <div class="ghtk-detail" id="ghtk-detail"></div>
         </div>
       `;
     },
-    mount(ctx, root) {
-      const state: ViewState = {
-        selected: -1,
-        addMode: false,
-        query: '',
-        status: { text: '' },
-        draft: '',
-        about: new Map(),
-        lastCommit: new Map(),
-      };
-
+    mount(ctx: PluginContext, root: HTMLElement) {
       const railList = root.querySelector<HTMLElement>('#ghtk-rail-list');
-      const railState = root.querySelector<HTMLElement>('#ghtk-rail-state');
+      const railTotal = root.querySelector<HTMLElement>('#ghtk-rail-total');
       const detail = root.querySelector<HTMLElement>('#ghtk-detail');
-      const addToggle = root.querySelector<HTMLElement>('#ghtk-add-toggle');
+      const addToggle = root.querySelector<HTMLButtonElement>('#ghtk-add-toggle');
       const searchInput = root.querySelector<HTMLInputElement>('#ghtk-search-input');
-      const currentRepoBtn = root.querySelector<HTMLElement>('#ghtk-current-repo');
-      const currentRepoName = root.querySelector<HTMLElement>('#ghtk-current-repo-name');
-      if (!railList || !detail || !railState) return;
+      const curBtn = root.querySelector<HTMLButtonElement>('#ghtk-current-repo');
+      const curName = root.querySelector<HTMLElement>('#ghtk-current-repo-name');
+      if (!railList || !railTotal || !detail || !addToggle || !searchInput || !curBtn || !curName) return;
 
       const currentUser = getCurrentUser(ctx.dom);
       const page = ctx.page;
       const currentRepo = page.owner && page.repo ? `${page.owner}/${page.repo}` : '';
+      const curKey = keyOf(currentRepo);
 
-      /** 当前仓库是这条绑定的上游（即正在浏览上游仓库本身） */
-      const isUpstreamOfCurrent = (b: Binding) =>
-        !!currentRepo && `${b.owner}/${b.repo}`.toLowerCase() === currentRepo.toLowerCase();
+      const state: ViewState = {
+        selected: '',
+        addMode: false,
+        draft: '',
+        detection: currentRepo ? { state: 'pending' } : { state: 'none' },
+        about: new Map(),
+        lastCommit: new Map(),
+        requested: new Set(),
+        bindingKey: '',
+        dirty: false,
+      };
+      const detectionPromise: Promise<Detection> = currentRepo
+        ? detectUpstream(page.owner!, page.repo!)
+        : Promise.resolve<Detection>({ state: 'none' });
+      let releaseAdd: (() => void) | null = null;
 
-      /** 当前仓库是这条绑定的下游（即正在浏览某个 fork） */
+      const isUpstreamOfCurrent = (b: Binding) => !!curKey && keyOf(fullOf(b)) === curKey;
       const isDownstreamOfCurrent = (b: Binding) =>
-        !!currentRepo && (b.downstreams || []).some((d) => d.toLowerCase() === currentRepo.toLowerCase());
+        !!curKey && (b.downstreams || []).some((d) => keyOf(d) === curKey);
+      const isRelated = (b: Binding) => isUpstreamOfCurrent(b) || isDownstreamOfCurrent(b);
 
-      /** 与当前仓库相关的绑定 */
-      const isCurrent = (b: Binding) => isUpstreamOfCurrent(b) || isDownstreamOfCurrent(b);
+      const setSelected = (key: string) => {
+        state.selected = key;
+        viewMemory.selected = key;
+      };
 
-      /**
-       * 左栏「当前仓库」入口：仅图标 + 状态图标，hover 出完整说明。
-       * 已绑定 → ✓ 图标；未绑定 → 空心圆；点击已绑定项直接选中，未绑定则带着仓库名进添加视图。
-       */
-      const updateCurrentRepoBtn = () => {
-        if (!currentRepoBtn) return;
-        if (!currentRepo) {
-          currentRepoBtn.hidden = true;
+      /** 初始选中：与当前仓库相关的绑定 → 上次选中的 → 第一条 */
+      const pickInitial = () => {
+        const list = loadBindings();
+        const pick =
+          list.find(isUpstreamOfCurrent) ||
+          list.find(isDownstreamOfCurrent) ||
+          list.find((b) => keyOf(fullOf(b)) === viewMemory.selected) ||
+          list[0];
+        setSelected(pick ? keyOf(fullOf(pick)) : '');
+      };
+
+      const findSelected = (list = loadBindings()) => list.find((b) => keyOf(fullOf(b)) === state.selected) || null;
+
+      /** 搜索同时匹配上游与下游 */
+      const matchesQuery = (b: Binding, q: string) =>
+        !q || keyOf(fullOf(b)).includes(q) || (b.downstreams || []).some((d) => keyOf(d).includes(q));
+
+      const copy = (text: string) => {
+        void copyText(text).then((ok) => ctx.ui.toast(ok ? '已复制' : '复制失败'));
+      };
+
+      // ---------- 左栏 ----------
+
+      /** 「当前仓库」入口：当前仓库已在列表里（作为上游或下游）就不显示，避免同一仓库出现两次 */
+      const updateCurrentEntry = () => {
+        const list = loadBindings();
+        if (!currentRepo || list.some(isRelated)) {
+          curBtn.hidden = true;
           return;
         }
-        currentRepoBtn.hidden = false;
-
-        const list = loadBindings();
-        const upIdx = list.findIndex(isUpstreamOfCurrent);
-        const downIdx = list.findIndex(isDownstreamOfCurrent);
-        const idx = upIdx >= 0 ? upIdx : downIdx;
-        const bound = idx >= 0;
-
-        currentRepoBtn.classList.toggle('bound', bound);
-        currentRepoBtn.dataset.idx = bound ? String(idx) : '';
-        if (currentRepoName) currentRepoName.textContent = currentRepo;
-
-        const stateText = bound
-          ? upIdx >= 0
-            ? '已绑定（当前仓库就是上游）'
-            : '已绑定（当前仓库是这条绑定的下游）'
-          : '未绑定，点击添加';
-        const tip = `当前仓库：${currentRepo}\n${stateText}`;
-        currentRepoBtn.title = tip;
-        currentRepoBtn.setAttribute('aria-label', tip);
-      };
-
-      /** 默认选中：当前仓库本身是上游 → 优先；其次当前仓库是下游；否则第一条 */
-      const pickDefault = () => {
-        const list = loadBindings();
-        let idx = list.findIndex(isUpstreamOfCurrent);
-        if (idx < 0) idx = list.findIndex(isDownstreamOfCurrent);
-        state.selected = idx >= 0 ? idx : list.length ? 0 : -1;
-      };
-
-      const renderStatus = () => {
-        railState.textContent = state.status.text;
-        railState.style.color = state.status.color || '';
+        curBtn.hidden = false;
+        curName.textContent = currentRepo;
+        const d = state.detection;
+        let tip: string;
+        if (d.state === 'pending') tip = `当前仓库：${currentRepo}\n正在检测上游…`;
+        else if (d.state === 'fork') tip = `当前仓库：${currentRepo}\n未绑定 · 上游是 ${d.upstream}\n点击绑定为它的下游`;
+        else if (d.state === 'failed') tip = `当前仓库：${currentRepo}\n未绑定 · 上游检测失败\n点击手动添加`;
+        else tip = `当前仓库：${currentRepo}\n未绑定\n点击添加为上游`;
+        curBtn.title = tip;
+        curBtn.setAttribute('aria-label', tip.replace(/\n/g, '，'));
+        if (d.state === 'pending') curBtn.setAttribute('aria-busy', 'true');
+        else curBtn.removeAttribute('aria-busy');
       };
 
       const renderRail = () => {
-        updateCurrentRepoBtn();
+        updateCurrentEntry();
         const list = loadBindings();
-        const q = state.query.trim().toLowerCase();
-        const rows = list
-          .map((b, idx) => ({ b, idx }))
-          .filter(({ b }) => !q || `${b.owner}/${b.repo}`.toLowerCase().includes(q));
-
+        railTotal.textContent = list.length ? String(list.length) : '';
         if (!list.length) {
-          railList.innerHTML = `<div class="ghtk-rail-empty">暂无绑定<br>点上方 + 添加</div>`;
+          railList.innerHTML = `<div class="ghtk-rail-empty">暂无绑定</div>`;
           return;
         }
+        const q = viewMemory.query.trim().toLowerCase();
+        const rows = list.filter((b) => matchesQuery(b, q));
         if (!rows.length) {
           railList.innerHTML = `<div class="ghtk-rail-empty">无匹配</div>`;
           return;
         }
-
+        const activeVisible = !state.addMode && rows.some((b) => keyOf(fullOf(b)) === state.selected);
         railList.innerHTML = rows
-          .map(({ b, idx }) => {
-            const hitUp = isUpstreamOfCurrent(b);
-            const hitDown = isDownstreamOfCurrent(b);
-            const related = hitUp || hitDown;
-            const cls = [
-              'ghtk-rail-item',
-              idx === state.selected && !state.addMode ? 'active' : '',
-              related ? 'related' : '',
-            ]
-              .filter(Boolean)
-              .join(' ');
-            const tip = related ? (hitUp ? '当前仓库即此上游' : '当前仓库是它的下游') : `${b.owner}/${b.repo}`;
+          .map((b, i) => {
+            const key = keyOf(fullOf(b));
+            const active = !state.addMode && key === state.selected;
+            const related = isRelated(b);
+            const count = (b.downstreams || []).length;
+            const tabIndex = active || (!activeVisible && i === 0) ? '0' : '-1';
+            const tip = `${fullOf(b)}${related ? ' · 与当前仓库相关' : ''} · ${count} 个下游`;
             return `
-            <div class="${cls}" data-idx="${idx}" title="${tip}">
-              <span class="ghtk-rail-name">${b.owner}/${b.repo}</span>
-              ${related ? '<span class="ghtk-rail-dot" title="与当前页面相关"></span>' : ''}
-              <span class="ghtk-rail-n">${(b.downstreams || []).length}</span>
-            </div>
-          `;
+              <button class="ghtk-rail-item${active ? ' active' : ''}" type="button" role="option"
+                aria-selected="${active}" tabindex="${tabIndex}" data-key="${escapeHtml(key)}" title="${escapeHtml(tip)}">
+                <span class="ghtk-rail-text">
+                  <span class="ghtk-rail-name">${related ? ICON.pin : ''}<span>${escapeHtml(b.repo)}</span></span>
+                  <span class="ghtk-rail-owner">${escapeHtml(b.owner)}</span>
+                </span>
+                <span class="ghtk-rail-count">${count}</span>
+              </button>`;
+          })
+          .join('');
+        railList.scrollTop = viewMemory.railScroll;
+      };
+
+      const selectKey = (key: string, focus = false) => {
+        if (state.addMode) exitAddMode(false);
+        setSelected(key);
+        renderRail();
+        renderDetail();
+        if (focus) {
+          railList.querySelector<HTMLElement>(`.ghtk-rail-item[data-key="${CSS.escape(key)}"]`)?.focus();
+        }
+      };
+
+      railList.addEventListener('click', (e) => {
+        const item = (e.target as HTMLElement).closest<HTMLElement>('.ghtk-rail-item');
+        if (item?.dataset.key) selectKey(item.dataset.key);
+      });
+      railList.addEventListener('keydown', (e) => {
+        const items = Array.from(railList.querySelectorAll<HTMLButtonElement>('.ghtk-rail-item'));
+        const i = items.indexOf(document.activeElement as HTMLButtonElement);
+        if (i < 0) return;
+        let next: number;
+        if (e.key === 'ArrowDown') next = Math.min(items.length - 1, i + 1);
+        else if (e.key === 'ArrowUp') next = Math.max(0, i - 1);
+        else if (e.key === 'Home') next = 0;
+        else if (e.key === 'End') next = items.length - 1;
+        else return;
+        e.preventDefault();
+        const key = items[next]?.dataset.key;
+        if (key) selectKey(key, true);
+      });
+      railList.addEventListener(
+        'scroll',
+        () => {
+          viewMemory.railScroll = railList.scrollTop;
+        },
+        { passive: true }
+      );
+
+      // ---------- 添加视图 ----------
+
+      const enterAddMode = (prefill = '') => {
+        if (!state.addMode) {
+          state.addMode = true;
+          // Esc 先退出添加视图，而不是直接关面板
+          releaseAdd = pushLayer('transient', () => {
+            releaseAdd = null;
+            exitAddMode();
+          });
+        }
+        state.draft = prefill;
+        addToggle.classList.add('active');
+        addToggle.setAttribute('aria-pressed', 'true');
+        renderRail();
+        renderDetail();
+        const input = detail.querySelector<HTMLInputElement>('#ghtk-upstream-input');
+        input?.focus({ preventScroll: true });
+        input?.select();
+      };
+
+      function exitAddMode(render = true) {
+        if (!state.addMode) return;
+        const hadFocus = !!detail && detail.contains(document.activeElement);
+        state.addMode = false;
+        addToggle!.classList.remove('active');
+        addToggle!.setAttribute('aria-pressed', 'false');
+        const release = releaseAdd;
+        releaseAdd = null;
+        release?.();
+        if (!render) return;
+        renderRail();
+        renderDetail();
+        if (hadFocus) addToggle!.focus({ preventScroll: true });
+      }
+
+      // ---------- 右栏详情 ----------
+
+      function renderDetail() {
+        if (!detail) return;
+        // 气泡开着时不重绘，避免气泡锚点被替换；关闭后补一次
+        if (isPopoverOpen()) {
+          state.dirty = true;
+          return;
+        }
+        state.dirty = false;
+        if (state.addMode) {
+          renderAddView();
+          return;
+        }
+
+        const list = loadBindings();
+        if (!list.length) {
+          detail.innerHTML = `
+            <div class="ghtk-blank">
+              <div>还没有绑定任何上游</div>
+              <button class="ghtk-btn primary" type="button" data-act="add-upstream">添加上游</button>
+            </div>`;
+          return;
+        }
+        let b = findSelected(list);
+        if (!b) {
+          pickInitial();
+          b = findSelected(list);
+        }
+        if (!b) return;
+
+        const full = fullOf(b);
+        const key = keyOf(full);
+        const downs = b.downstreams || [];
+        const about = state.about.get(key);
+        const last = state.lastCommit.get(key);
+        const userPrefix = currentUser ? keyOf(currentUser) + '/' : '';
+        // 按 owner 判断「我的 Fork」：fork 改了名也算
+        const myForkBound = !!userPrefix && downs.some((d) => keyOf(d).startsWith(userPrefix));
+        const busy = state.bindingKey === key;
+
+        const rows = downs
+          .map((d) => {
+            const mine = !!userPrefix && keyOf(d).startsWith(userPrefix);
+            const isCur = !!curKey && keyOf(d) === curKey;
+            return `
+              <div class="ghtk-drow">
+                <span class="ghtk-drow-branch" aria-hidden="true">└</span>
+                ${isCur ? `<span class="ghtk-drow-pin" title="当前仓库">${ICON.pin}</span>` : ''}
+                <a class="ghtk-drow-name" href="https://github.com/${escapeHtml(d)}" data-ghtk-nav title="${escapeHtml(d)}">${escapeHtml(d)}</a>
+                ${mine ? '<span class="ghtk-chip">我的 Fork</span>' : ''}
+                <button class="ghtk-icon-btn ghtk-drow-rm" type="button" data-act="remove-down" data-down="${escapeHtml(d)}"
+                  title="移除下游" aria-label="移除下游 ${escapeHtml(d)}">${ICON.x}</button>
+              </div>`;
           })
           .join('');
 
-        railList.querySelectorAll<HTMLElement>('.ghtk-rail-item').forEach((el) => {
-          el.addEventListener('click', () => {
-            state.selected = +el.dataset.idx!;
-            state.addMode = false;
-            addToggle?.classList.remove('active');
-            renderRail();
-            renderDetail();
-          });
-        });
-      };
+        const emptyCta = currentUser
+          ? `<button class="ghtk-empty-cta" type="button" data-act="bind-fork"${busy ? ' aria-busy="true"' : ''}>
+               <span>还没有下游</span><strong>${busy ? '检测中…' : '检测我的 Fork'}</strong>
+             </button>`
+          : `<button class="ghtk-empty-cta" type="button" data-act="add-down">
+               <span>还没有下游</span><strong>添加下游</strong>
+             </button>`;
 
-      const renderDetail = () => {
-        const list = loadBindings();
+        // 唯一的蓝色主按钮固定在底部；已绑定我的 Fork 后不再显示（其它下游从「⋯」添加）
+        const foot =
+          currentUser && downs.length && !myForkBound
+            ? `<div class="ghtk-detail-foot">
+                 <button class="ghtk-btn primary block" type="button" data-act="bind-fork"${busy ? ' aria-busy="true"' : ''}>
+                   ${busy ? '<span class="ghtk-spinner" aria-hidden="true"></span>检测中…' : '绑定我的 Fork'}
+                 </button>
+               </div>`
+            : '';
 
-        if (state.addMode) {
-          renderAddView(list);
-          return;
-        }
-
-        if (!list.length) {
-          detail.innerHTML = `
-            <div class="ghtk-detail-empty">
-              <div>暂无绑定</div>
-              <button class="ghtk-btn primary" id="ghtk-empty-add" type="button">添加上游</button>
-            </div>
-          `;
-          detail.querySelector('#ghtk-empty-add')?.addEventListener('click', () => enterAddMode());
-          return;
-        }
-
-        const b = list[state.selected];
-        if (!b) {
-          state.selected = 0;
-          renderDetail();
-          return;
-        }
-
-        const downs = b.downstreams || [];
-        const full = `${b.owner}/${b.repo}`;
-        const about = state.about.get(full.toLowerCase());
-        const lastCommit = state.lastCommit.get(full.toLowerCase());
-        const aboutHtml = renderAbout(about, full, lastCommit);
-        const ownerText = `${b.owner}`;
-
-        const rows = downs.length
-          ? downs
-              .map((d) => {
-                // 该下游是否就是当前登录用户的 fork（或当前正在浏览的仓库）
-                const isMine = !!currentUser && d.toLowerCase().startsWith(`${currentUser.toLowerCase()}/`);
-                const isCurrentPage = !!currentRepo && d.toLowerCase() === currentRepo.toLowerCase();
-                const tag = isCurrentPage
-                  ? '<span class="ghtk-chip">当前仓库</span>'
-                  : isMine
-                    ? '<span class="ghtk-chip">我的 Fork</span>'
-                    : '';
-                return `
-            <div class="ghtk-drow">
-              <span class="ghtk-drow-dash">└</span>
-              <a href="https://github.com/${d}" data-ghtk-nav title="打开下游 ${d}">${d}</a>
-              ${tag}
-              <button class="ghtk-icon-btn ghtk-drow-rm" data-remove="${d}" type="button" title="移除下游">${ICONS.del}</button>
-            </div>
-          `;
-              })
-              .join('')
-          : `<div class="ghtk-dempty">无下游</div>`;
+        const when = last || about?.updatedAt || null;
+        const subParts = [`${downs.length} 个下游`];
+        if (when) subParts.push(`${relativeTime(when)}更新`);
+        if (!currentUser) subParts.push('未登录');
+        const subTip = when ? `${last ? '最后提交' : '最近推送'} ${formatDate(when)}` : '';
 
         detail.innerHTML = `
           <div class="ghtk-detail-head">
-            <div class="ghtk-detail-title">
-              <span class="name" title="${full}">${full}</span>
-              ${isUpstreamOfCurrent(b) ? '<span class="ghtk-chip">当前仓库</span>' : ''}
+            <div class="ghtk-detail-title-row">
+              <a class="ghtk-detail-title" href="https://github.com/${escapeHtml(full)}" data-ghtk-nav
+                title="打开上游 ${escapeHtml(full)}">${escapeHtml(full)}</a>
+              <button class="ghtk-icon-btn" type="button" data-act="copy" title="复制上游链接" aria-label="复制上游链接">${ICON.copy}</button>
+              <button class="ghtk-icon-btn" type="button" data-act="more" title="更多操作" aria-label="更多操作"
+                aria-haspopup="menu" aria-expanded="false">${ICON.kebab}</button>
             </div>
-            <div class="ghtk-detail-sub">
-              <span>上游所有者 <b>${ownerText}</b></span>
-              <span>${
-                currentUser
-                  ? `当前用户 <b>${currentUser}</b>`
-                  : '<span style="color:#cf222e">未登录</span>'
-              }</span>
-            </div>
+            <div class="ghtk-detail-sub"${subTip ? ` title="${escapeHtml(subTip)}"` : ''}>${escapeHtml(subParts.join(' · '))}</div>
           </div>
-
-          ${aboutHtml}
-
+          ${renderAbout(about)}
           <div class="ghtk-detail-body">
-            <div class="ghtk-sec-label">下游 · ${downs.length}</div>
-            ${rows}
+            <div class="ghtk-sec-label">下游</div>
+            ${downs.length ? rows : emptyCta}
           </div>
-
-          <div class="ghtk-detail-foot">
-            <div class="ghtk-foot-main">
-              <button class="ghtk-btn primary" id="ghtk-auto-bind" type="button">绑定下游</button>
-              <button class="ghtk-btn" id="ghtk-manual-bind" type="button">手动绑定</button>
-            </div>
-            <div class="ghtk-foot-main ghtk-foot-second">
-              <a class="ghtk-btn" href="https://github.com/${full}" data-ghtk-nav>打开上游</a>
-              <button class="ghtk-btn" id="ghtk-copy-up" type="button">复制链接</button>
-              <button class="ghtk-btn danger" id="ghtk-remove-up" type="button">删除</button>
-            </div>
-          </div>
+          ${foot}
         `;
+        fitTopics(detail);
+        loadFor(b);
+      }
 
-        // about 完整信息气泡
-        detail.querySelector('#ghtk-about-detail')?.addEventListener('click', (ev) => {
-          ev.preventDefault();
-          ev.stopPropagation();
-          const data = state.about.get(full.toLowerCase());
-          if (!data) {
-            // 数据还没回来（或请求失败），给出反馈而不是静默无响应
-            ctx.ui.toast(state.about.has(full.toLowerCase()) ? '无仓库信息' : '正在加载…');
-            return;
-          }
-          const anchor = ev.currentTarget as HTMLElement;
-          const lastCommitDate = state.lastCommit.get(full.toLowerCase());
-          showAboutPopover({
-            about: data,
-            anchor,
-            pageType: page.type,
-            extraMeta: [
-              [
-                '最近推送',
-                data.updatedAt
-                  ? `${formatDate(data.updatedAt)}（${relativeTime(data.updatedAt)}）`
-                  : '—',
-              ],
-              ['最后提交', lastCommitDate ? `${formatDate(lastCommitDate)}（${relativeTime(lastCommitDate)}）` : '—'],
-            ],
-            actions: [
-              { label: '打开仓库', href: `https://github.com/${full}` },
-              {
-                label: '复制链接',
-                onClick: () => {
-                  navigator.clipboard
-                    .writeText(`https://github.com/${full}`)
-                    .then(() => ctx.ui.toast('已复制'))
-                    .catch(() => ctx.ui.toast('复制失败'));
-                },
-              },
-            ],
-          });
-        });
+      // Tab 隐藏时宽度为 0 量不准：变为可见或尺寸变化时重新裁剪 topics
+      if (typeof ResizeObserver !== 'undefined') {
+        new ResizeObserver(() => {
+          if (detail.clientWidth) fitTopics(detail);
+        }).observe(detail);
+      }
 
-        // 移除下游（二次确认）
-        detail.querySelectorAll<HTMLElement>('[data-remove]').forEach((btn) => {
-          btn.addEventListener('click', async () => {
-            const down = btn.dataset.remove!;
-            const ok = await Modal.show({
-              title: '移除下游',
-              content: `从 <b>${full}</b> 的下游中移除 <b>${down}</b>？`,
-              confirmText: '移除',
-              cancelText: '取消',
-              danger: true,
-            });
-            if (!ok) return;
-            const latest = loadBindings();
-            if (!latest[state.selected]) return;
-            latest[state.selected].downstreams = (latest[state.selected].downstreams || []).filter(
-              (x) => x !== down
-            );
-            saveBindings(latest);
-            renderRail();
-            renderDetail();
-            ctx.ui.toast('已移除');
-          });
-        });
-
-        // 自动绑定下游（检测我的 fork）
-        detail.querySelector('#ghtk-auto-bind')?.addEventListener('click', async () => {
-          if (!currentUser) {
-            ctx.ui.toast('未登录');
-            return;
-          }
-          const target = loadBindings()[state.selected];
-          if (!target) return;
-          ctx.ui.toast('正在检测…');
-          const res = await checkHasForked(currentUser, target.owner, target.repo);
-
-          if (res.forkUrl) {
-            const latest = loadBindings();
-            const cur = latest[state.selected];
-            if (!cur) return;
-            const down = `${currentUser}/${cur.repo}`;
-            cur.downstreams = cur.downstreams || [];
-            if (!cur.downstreams.includes(down)) {
-              cur.downstreams.push(down);
-              saveBindings(latest);
-              renderRail();
-              renderDetail();
-              ctx.ui.toast('已绑定 ' + down);
-            } else {
-              ctx.ui.toast('已存在');
-            }
-            return;
-          }
-
-          // 检测失败：说明具体原因，并直接弹出手动绑定（预填你的 fork 路径）
-          if (res.reason === 'rate-limited') {
-            ctx.ui.toast('API 限流，改用手动确认');
-          } else if (res.reason === 'unknown') {
-            ctx.ui.toast('检测失败，请手动确认');
-          } else {
-            ctx.ui.toast('未检测到 Fork，请手动确认');
-          }
-
-          const suggested = `${currentUser}/${target.repo}`;
-          const val = await Modal.show({
-            title: '确认下游仓库',
-            content: '没自动检测到你的 fork。如果确实 fork 过（比如改了名字），直接填仓库全名。',
-            showInput: true,
-            inputValue: suggested,
-            placeholder: 'owner/repo',
-            confirmText: '绑定',
-          });
-          if (!val) return;
-          const cleaned = String(val).trim().replace(/^https?:\/\/github\.com\//i, '');
-          if (!cleaned.includes('/')) {
-            ctx.ui.toast('格式错误');
-            return;
-          }
-          const latest = loadBindings();
-          const cur = latest[state.selected];
-          if (!cur) return;
-          cur.downstreams = cur.downstreams || [];
-          if (!cur.downstreams.includes(cleaned)) {
-            cur.downstreams.push(cleaned);
-            saveBindings(latest);
-            renderRail();
-            renderDetail();
-            ctx.ui.toast('已绑定 ' + cleaned);
-          } else {
-            ctx.ui.toast('已存在');
-          }
-        });
-
-        // 手动绑定下游
-        detail.querySelector('#ghtk-manual-bind')?.addEventListener('click', async () => {
-          const val = await Modal.show({
-            title: '绑定下游',
-            showInput: true,
-            inputValue: currentUser ? `${currentUser}/` : '',
-            placeholder: 'owner/repo',
-            confirmText: '绑定',
-          });
-          if (!val) return;
-          const cleaned = String(val).trim().replace(/^https?:\/\/github\.com\//i, '');
-          if (!cleaned.includes('/')) {
-            ctx.ui.toast('格式错误');
-            return;
-          }
-          const latest = loadBindings();
-          const cur = latest[state.selected];
-          if (!cur) return;
-          cur.downstreams = cur.downstreams || [];
-          if (!cur.downstreams.includes(cleaned)) {
-            cur.downstreams.push(cleaned);
-            saveBindings(latest);
-            renderRail();
-            renderDetail();
-            ctx.ui.toast('已绑定 ' + cleaned);
-          } else {
-            ctx.ui.toast('已存在');
-          }
-        });
-
-        // 复制上游链接
-        detail.querySelector('#ghtk-copy-up')?.addEventListener('click', () => {
-          navigator.clipboard
-            .writeText(`https://github.com/${full}`)
-            .then(() => ctx.ui.toast('已复制'))
-            .catch(() => ctx.ui.toast('复制失败'));
-        });
-
-        // 删除整条绑定
-        detail.querySelector('#ghtk-remove-up')?.addEventListener('click', async () => {
-          const ok = await Modal.show({
-            title: '删除绑定',
-            content: `删除上游 <b>${full}</b> 及其全部下游记录？`,
-            confirmText: '删除',
-            cancelText: '取消',
-            danger: true,
-          });
-          if (!ok) return;
-          const latest = loadBindings();
-          latest.splice(state.selected, 1);
-          saveBindings(latest);
-          pickDefault();
-          renderRail();
-          renderDetail();
-          ctx.ui.toast('已删除');
-        });
-
-        // 按需加载 about（命中持久缓存则立即渲染，不显示加载态）
-        loadAbout(b);
-        // 按需加载最后提交时间
-        loadCommitTime(b);
-      };
-
-      /** 读取 about：内存 → GM 持久缓存 → 网络，过期时先渲染旧值再后台刷新 */
-      const loadAbout = (b: Binding) => {
-        const key = `${b.owner}/${b.repo}`.toLowerCase();
-        if (state.about.has(key)) return;
-
+      /** 按需加载 about 与最后提交（每个绑定只发一次，缓存层负责过期刷新） */
+      const loadFor = (b: Binding) => {
+        const key = keyOf(fullOf(b));
+        if (state.requested.has(key)) return;
+        state.requested.add(key);
         loadRepoAbout(b.owner, b.repo, (data) => {
           state.about.set(key, data);
-          // 仅当当前选中的还是这一条时才刷新，避免切走后又闪回
-          const cur = loadBindings()[state.selected];
-          if (!cur) return;
-          if (`${cur.owner}/${cur.repo}`.toLowerCase() === key) renderDetail();
+          if (state.selected === key && !state.addMode) renderDetail();
         });
-      };
-
-      /** 读取默认分支最后提交时间，回调后局部刷新详情 */
-      const loadCommitTime = (b: Binding) => {
-        const key = `${b.owner}/${b.repo}`.toLowerCase();
-        if (state.lastCommit.has(key)) return;
-
         loadLastCommit(b.owner, b.repo, (date) => {
           state.lastCommit.set(key, date);
-          const cur = loadBindings()[state.selected];
-          if (!cur) return;
-          if (`${cur.owner}/${cur.repo}`.toLowerCase() === key) renderDetail();
+          if (state.selected === key && !state.addMode) renderDetail();
         });
       };
 
-      const enterAddMode = () => {
-        state.addMode = true;
-        state.draft = '';
-        addToggle?.classList.add('active');
-        renderRail();
-        renderDetail();
-      };
+      function renderAddView() {
+        if (!detail) return;
+        const prev = detail.querySelector<HTMLInputElement>('#ghtk-upstream-input');
+        const hadFocus = !!prev && document.activeElement === prev;
+        const selStart = prev?.selectionStart ?? null;
+        const selEnd = prev?.selectionEnd ?? null;
 
-      const exitAddMode = () => {
-        state.addMode = false;
-        addToggle?.classList.remove('active');
-        renderRail();
-        renderDetail();
-      };
+        const list = loadBindings();
+        const d = state.detection;
+        let extra = '';
+        let detectPrimary = false;
+        if (d.state === 'pending') {
+          extra = '<div class="ghtk-note">正在检测当前仓库…</div>';
+        } else if (d.state === 'fork') {
+          const up = list.find((x) => keyOf(fullOf(x)) === keyOf(d.upstream));
+          const already = !!up && (up.downstreams || []).some((x) => keyOf(x) === curKey);
+          if (already) {
+            extra = `<div class="ghtk-note">当前仓库已是 ${escapeHtml(d.upstream)} 的下游</div>`;
+          } else {
+            detectPrimary = true;
+            extra = `
+              <div class="ghtk-detect">
+                <div class="ghtk-detect-label">当前仓库的上游</div>
+                <div class="ghtk-detect-name" title="${escapeHtml(d.upstream)}">${escapeHtml(d.upstream)}</div>
+                <div class="ghtk-btn-row">
+                  <button class="ghtk-btn primary" type="button" data-act="bind-current">绑定为下游</button>
+                  <a class="ghtk-btn" href="https://github.com/${escapeHtml(d.upstream)}" data-ghtk-nav>打开</a>
+                </div>
+              </div>`;
+          }
+        } else if (d.state === 'failed') {
+          extra = '<div class="ghtk-note">没能获取当前仓库信息</div>';
+        } else if (currentRepo) {
+          extra = '<div class="ghtk-note">当前仓库不是 Fork，没有上游</div>';
+        }
 
-      const renderAddView = (list: Binding[]) => {
-        const st = state.status;
-        const detected = st.fullName && st.owner && st.repo;
-        const alreadyBound = detected && st.bound;
-
+        // 检测到上游时「绑定为下游」是主操作，「添加」降为次要（一屏只有一个蓝色按钮）
         detail.innerHTML = `
           <div class="ghtk-addview">
             <div class="ghtk-addview-head">
               <div class="ghtk-addview-title">添加上游</div>
-              <div class="ghtk-addview-sub">owner/repo 或完整链接</div>
+              <div class="ghtk-detail-sub">输入 owner/repo 或粘贴仓库链接</div>
             </div>
             <div class="ghtk-addview-body">
-              <label class="ghtk-field-label" for="ghtk-upstream-input">仓库</label>
               <div class="ghtk-field">
-                <input type="text" id="ghtk-upstream-input" placeholder="owner/repo" value="${state.draft.replace(/"/g, '&quot;')}" />
-                <button class="ghtk-btn primary" id="ghtk-add-upstream" type="button">添加</button>
-              </div>
-              <div class="ghtk-hint">也支持粘贴 https://github.com/owner/repo</div>
-              ${
-                detected && !alreadyBound
-                  ? `
-                <div class="ghtk-detect">
-                  <div class="ghtk-detect-label">检测到当前仓库上游</div>
-                  <div class="ghtk-detect-repo" title="${st.fullName}">${st.fullName}</div>
-                  <div class="ghtk-detect-actions">
-                    <button class="ghtk-btn primary" id="ghtk-oneclick-bind" type="button">绑定为下游</button>
-                    <a class="ghtk-btn" href="https://github.com/${st.fullName}" data-ghtk-nav>打开</a>
-                  </div>
+                <label class="ghtk-field-label" for="ghtk-upstream-input">仓库</label>
+                <div class="ghtk-field-row">
+                  <input class="ghtk-input" type="text" id="ghtk-upstream-input" placeholder="owner/repo"
+                    value="${escapeHtml(state.draft)}" autocomplete="off" spellcheck="false" />
+                  <button class="ghtk-btn${detectPrimary ? '' : ' primary'}" type="button" data-act="submit-upstream">添加</button>
                 </div>
-              `
-                  : detected && alreadyBound
-                    ? `<div class="ghtk-note">当前仓库已绑定上游 ${st.fullName}</div>`
-                    : st.text === '检测失败'
-                      ? `<div class="ghtk-note">无法获取仓库信息</div>`
-                      : st.text === '无上游'
-                        ? `<div class="ghtk-note">当前仓库不是 Fork，没有上游</div>`
-                        : ''
-              }
-              ${list.length === 0 ? '' : ''}
+              </div>
+              ${extra}
             </div>
-            <div class="ghtk-addview-foot">
-              <button class="ghtk-btn" id="ghtk-add-cancel" type="button">取消</button>
+            <div class="ghtk-detail-foot">
+              <div class="ghtk-btn-row">
+                <button class="ghtk-btn" type="button" data-act="cancel-add">取消</button>
+              </div>
             </div>
           </div>
         `;
 
-        const input = detail.querySelector<HTMLInputElement>('#ghtk-upstream-input');
-        input?.focus();
-
-        detail.querySelector('#ghtk-add-cancel')?.addEventListener('click', () => exitAddMode());
-
-        const submit = () => {
-          const val = (input?.value || '').trim().replace(/^https?:\/\/github\.com\//i, '');
-          if (!val || !val.includes('/')) {
-            ctx.ui.toast('格式错误');
-            return;
+        if (hadFocus) {
+          const input = detail.querySelector<HTMLInputElement>('#ghtk-upstream-input');
+          if (input) {
+            input.focus({ preventScroll: true });
+            if (selStart !== null && selEnd !== null) input.setSelectionRange(selStart, selEnd);
           }
-          const [owner, repo] = val.split('/');
-          if (!owner || !repo) {
-            ctx.ui.toast('格式错误');
-            return;
-          }
-          const latest = loadBindings();
-          const key = `${owner}/${repo}`.toLowerCase();
-          if (latest.some((b) => `${b.owner}/${b.repo}`.toLowerCase() === key)) {
-            ctx.ui.toast('已存在');
-            return;
-          }
-          latest.push({ owner, repo, downstreams: [], createdAt: Date.now() });
-          saveBindings(latest);
-          state.selected = latest.length - 1;
-          state.addMode = false;
-          addToggle?.classList.remove('active');
-          renderRail();
-          renderDetail();
-          ctx.ui.toast('已添加 ' + owner + '/' + repo);
-        };
+        }
+      }
 
-        detail.querySelector('#ghtk-add-upstream')?.addEventListener('click', submit);
-        input?.addEventListener('keydown', (e) => {
-          if (e.key === 'Enter') submit();
+      // ---------- 数据操作 ----------
+
+      /** 往指定上游追加下游 */
+      const addDownstream = (upKey: string, down: string): 'added' | 'exists' | 'missing' => {
+        const list = loadBindings();
+        const b = list.find((x) => keyOf(fullOf(x)) === upKey);
+        if (!b) return 'missing';
+        b.downstreams = b.downstreams || [];
+        if (b.downstreams.some((d) => keyOf(d) === keyOf(down))) return 'exists';
+        b.downstreams.push(down);
+        saveBindings(list);
+        return 'added';
+      };
+
+      const reportAdd = (r: 'added' | 'exists' | 'missing') => {
+        renderRail();
+        renderDetail();
+        ctx.ui.toast(r === 'added' ? '已绑定' : r === 'exists' ? '已存在' : '上游已删除');
+      };
+
+      const promptAddDownstream = async (
+        upKey: string,
+        opts: { title?: string; content?: string; value?: string } = {}
+      ) => {
+        const val = await Modal.show({
+          title: opts.title || '添加下游',
+          content: opts.content || '',
+          showInput: true,
+          inputValue: opts.value ?? '',
+          placeholder: 'owner/repo 或链接',
+          confirmText: '绑定',
         });
+        if (val === null || val === false) return;
+        const p = parseRepo(String(val));
+        if (!p) {
+          ctx.ui.toast('格式错误');
+          return;
+        }
+        reportAdd(addDownstream(upKey, `${p.owner}/${p.repo}`));
+      };
 
-        // 一键绑定检测到的上游
-        detail.querySelector('#ghtk-oneclick-bind')?.addEventListener('click', () => {
-          if (!st.owner || !st.repo || !st.fullName) return;
-          const latest = loadBindings();
-          let binding = latest.find(
-            (x) =>
-              x.owner.toLowerCase() === st.owner!.toLowerCase() &&
-              x.repo.toLowerCase() === st.repo!.toLowerCase()
-          );
-          if (!binding) {
-            binding = { owner: st.owner, repo: st.repo, downstreams: [], createdAt: Date.now() };
-            latest.push(binding);
-          }
-          binding.downstreams = binding.downstreams || [];
-          if (currentRepo && !binding.downstreams.includes(currentRepo)) {
-            binding.downstreams.push(currentRepo);
-          }
-          saveBindings(latest);
-          state.selected = latest.indexOf(binding);
-          state.addMode = false;
-          state.status = { ...st, bound: true };
-          addToggle?.classList.remove('active');
-          renderStatus();
-          renderRail();
-          renderDetail();
-          ctx.ui.toast('已绑定 ' + (currentRepo || st.fullName));
+      /** 检测我的 fork 并绑定；检测不到时弹出手动确认（预填我的 fork 路径） */
+      const bindMyFork = async (b: Binding) => {
+        const upKey = keyOf(fullOf(b));
+        if (!currentUser) {
+          await promptAddDownstream(upKey);
+          return;
+        }
+        if (state.bindingKey) return;
+        state.bindingKey = upKey;
+        renderDetail();
+        const res = await checkHasForked(currentUser, b.owner, b.repo);
+        state.bindingKey = '';
+        if (res.forkUrl) {
+          reportAdd(addDownstream(upKey, `${currentUser}/${b.repo}`));
+          return;
+        }
+        renderDetail();
+        const reason =
+          res.reason === 'rate-limited'
+            ? 'GitHub API 暂时限流，没法自动检测。'
+            : res.reason === 'unknown'
+              ? '自动检测失败。'
+              : `没找到 ${escapeHtml(currentUser)}/${escapeHtml(b.repo)}。`;
+        await promptAddDownstream(upKey, {
+          title: '确认我的 Fork',
+          content: `${reason}如果 fork 过（比如改了名字），填仓库全名即可。`,
+          value: `${currentUser}/${b.repo}`,
         });
       };
 
-      // 搜索
-      searchInput?.addEventListener('input', () => {
-        state.query = searchInput.value;
+      const removeDownstream = async (b: Binding, down: string) => {
+        const ok = await Modal.show({
+          title: '移除下游',
+          content: `从 <b>${escapeHtml(fullOf(b))}</b> 的下游中移除 <b>${escapeHtml(down)}</b>？`,
+          confirmText: '移除',
+          danger: true,
+        });
+        if (!ok) return;
+        const upKey = keyOf(fullOf(b));
+        const list = loadBindings();
+        const target = list.find((x) => keyOf(fullOf(x)) === upKey);
+        if (!target) return;
+        target.downstreams = (target.downstreams || []).filter((d) => keyOf(d) !== keyOf(down));
+        saveBindings(list);
+        renderRail();
+        renderDetail();
+        ctx.ui.toast('已移除');
+      };
+
+      const removeBinding = async (b: Binding) => {
+        const full = fullOf(b);
+        const ok = await Modal.show({
+          title: '删除绑定',
+          content: `删除上游 <b>${escapeHtml(full)}</b> 及其全部下游记录？`,
+          confirmText: '删除',
+          danger: true,
+        });
+        if (!ok) return;
+        saveBindings(loadBindings().filter((x) => keyOf(fullOf(x)) !== keyOf(full)));
+        pickInitial();
+        renderRail();
+        renderDetail();
+        ctx.ui.toast('已删除');
+      };
+
+      const openMore = (anchor: HTMLElement, b: Binding) => {
+        showMenu(anchor, [
+          { label: '添加其他下游…', onSelect: () => void promptAddDownstream(keyOf(fullOf(b))) },
+          { label: '删除绑定', danger: true, onSelect: () => void removeBinding(b) },
+        ]);
+      };
+
+      const openAbout = (anchor: HTMLElement, b: Binding) => {
+        const key = keyOf(fullOf(b));
+        const about = state.about.get(key);
+        if (!about) return;
+        const last = state.lastCommit.get(key);
+        showAboutPopover({
+          about,
+          anchor,
+          extraMeta: [
+            ['最近推送', about.updatedAt ? `${formatDate(about.updatedAt)}（${relativeTime(about.updatedAt)}）` : '—'],
+            ['最后提交', last ? `${formatDate(last)}（${relativeTime(last)}）` : '—'],
+          ],
+          onClose: () => {
+            if (state.dirty) renderDetail();
+          },
+        });
+      };
+
+      const submitUpstream = () => {
+        const input = detail.querySelector<HTMLInputElement>('#ghtk-upstream-input');
+        const p = parseRepo(input ? input.value : state.draft);
+        if (!p) {
+          ctx.ui.toast('格式错误');
+          input?.focus();
+          return;
+        }
+        const list = loadBindings();
+        const key = keyOf(`${p.owner}/${p.repo}`);
+        if (list.some((b) => keyOf(fullOf(b)) === key)) {
+          ctx.ui.toast('已存在');
+        } else {
+          list.push({ owner: p.owner, repo: p.repo, downstreams: [], createdAt: Date.now() });
+          saveBindings(list);
+          ctx.ui.toast('已添加');
+        }
+        setSelected(key);
+        state.draft = '';
+        exitAddMode();
+      };
+
+      /** 当前仓库是 fork：直接绑定为上游的下游（上游不在列表里就一起加上） */
+      const bindCurrentAsDownstream = async () => {
+        const d = await detectionPromise;
+        if (d.state !== 'fork' || !currentRepo) return;
+        const list = loadBindings();
+        const upKey = keyOf(d.upstream);
+        let up = list.find((x) => keyOf(fullOf(x)) === upKey);
+        if (!up) {
+          const [owner, repo] = d.upstream.split('/');
+          up = { owner, repo, downstreams: [], createdAt: Date.now() };
+          list.push(up);
+        }
+        up.downstreams = up.downstreams || [];
+        if (!up.downstreams.some((x) => keyOf(x) === curKey)) up.downstreams.push(currentRepo);
+        saveBindings(list);
+        setSelected(upKey);
+        if (state.addMode) exitAddMode(false);
+        renderRail();
+        renderDetail();
+        ctx.ui.toast('已绑定');
+      };
+
+      // ---------- 事件（委托，只绑一次） ----------
+
+      detail.addEventListener('click', (e) => {
+        const el = (e.target as HTMLElement).closest<HTMLElement>('[data-act]');
+        if (!el || !detail.contains(el)) return;
+        const b = findSelected();
+        switch (el.dataset.act) {
+          case 'add-upstream':
+            enterAddMode('');
+            break;
+          case 'copy':
+            if (b) copy(`https://github.com/${fullOf(b)}`);
+            break;
+          case 'more':
+            if (b) openMore(el, b);
+            break;
+          case 'about':
+            if (b) openAbout(el, b);
+            break;
+          case 'bind-fork':
+            if (b) void bindMyFork(b);
+            break;
+          case 'add-down':
+            if (b) void promptAddDownstream(keyOf(fullOf(b)));
+            break;
+          case 'remove-down':
+            if (b && el.dataset.down) void removeDownstream(b, el.dataset.down);
+            break;
+          case 'submit-upstream':
+            submitUpstream();
+            break;
+          case 'bind-current':
+            void bindCurrentAsDownstream();
+            break;
+          case 'cancel-add':
+            exitAddMode();
+            break;
+        }
+      });
+      detail.addEventListener('keydown', (e) => {
+        const t = e.target as HTMLElement;
+        if (t.id === 'ghtk-upstream-input' && e.key === 'Enter' && !e.isComposing) {
+          e.preventDefault();
+          submitUpstream();
+        }
+      });
+      detail.addEventListener('input', (e) => {
+        const t = e.target as HTMLInputElement;
+        if (t.id === 'ghtk-upstream-input') state.draft = t.value;
+      });
+
+      curBtn.addEventListener('click', async () => {
+        const d = await detectionPromise;
+        if (d.state === 'fork') {
+          await bindCurrentAsDownstream();
+          return;
+        }
+        enterAddMode(currentRepo);
+      });
+
+      addToggle.addEventListener('click', () => {
+        if (state.addMode) exitAddMode();
+        else enterAddMode('');
+      });
+
+      searchInput.value = viewMemory.query;
+      searchInput.addEventListener('input', () => {
+        viewMemory.query = searchInput.value;
         renderRail();
       });
 
-      // 添加视图 ←→ 详情视图
-      addToggle?.addEventListener('click', () => {
-        if (state.addMode) exitAddMode();
-        else enterAddMode();
-      });
+      // ---------- 初始渲染 ----------
 
-      // 左栏「当前仓库」入口
-      currentRepoBtn?.addEventListener('click', () => {
-        const idxText = currentRepoBtn.dataset.idx;
-        if (idxText !== undefined && idxText !== '') {
-          // 已绑定 → 直接选中对应条目
-          state.selected = +idxText;
-          state.addMode = false;
-          addToggle?.classList.remove('active');
-          renderRail();
-          renderDetail();
-          return;
-        }
-        // 未绑定 → 进添加视图并预填当前仓库
-        enterAddMode();
-        const input = root.querySelector<HTMLInputElement>('#ghtk-upstream-input');
-        if (input) {
-          input.value = currentRepo;
-          input.focus();
-        }
-      });
-
-      pickDefault();
-      renderStatus();
+      pickInitial();
       renderRail();
       renderDetail();
-
-      // 检测当前仓库上游（状态显示在左栏标题右侧）
-      if (page.owner && page.repo) {
-        state.status = { text: '检测中…' };
-        renderStatus();
-        detectUpstream(page, currentUser).then((st) => {
-          state.status = st;
-          renderStatus();
+      if (currentRepo) {
+        void detectionPromise.then((d) => {
+          state.detection = d;
+          if (!root.isConnected) return;
+          renderRail();
           if (state.addMode) renderDetail();
         });
       }
     },
   },
 };
-
-async function detectUpstream(page: PageContext, currentUser: string | null): Promise<UpstreamStatus> {
-  const owner = page.owner!;
-  const repo = page.repo!;
-  const info = await fetchRepoInfo(owner, repo);
-  if (!info) return { text: '检测失败', color: '#cf222e' };
-
-  const upstream = info.parent || info.source;
-  if (!info.fork || !upstream) return { text: '无上游' };
-
-  const currentFull = `${owner}/${repo}`;
-  const bindings = loadBindings();
-  const bound = bindings.some(
-    (b) =>
-      b.owner.toLowerCase() === upstream.owner.toLowerCase() &&
-      b.repo.toLowerCase() === upstream.repo.toLowerCase() &&
-      (b.downstreams || []).includes(currentFull)
-  );
-
-  return {
-    text: bound ? '已绑定' : '未绑定',
-    color: bound ? '#1a7f37' : undefined,
-    fullName: upstream.full_name,
-    owner: upstream.owner,
-    repo: upstream.repo,
-    bound,
-  };
-}

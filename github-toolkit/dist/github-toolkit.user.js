@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         GitHub Toolkit
 // @namespace    github-toolkit
-// @version      2.8.1
+// @version      2.9.0
 // @author       Cores
 // @description  高内聚低耦合的 GitHub 模块化工具台（图标操作 + 复制上游链接）
 // @license      MIT
@@ -75,1448 +75,1091 @@
   }
   const STYLE_ID = "ghtk-style-v1";
   const ROOT_ID = "ghtk-root";
-  const CSS = `
-  /* ===== 尺寸 token：作用域限定在 #ghtk-root 内，不污染页面 ===== */
+  const CSS_SOURCE = `
+  /* ===== token ===== */
   #ghtk-root {
-    --ghtk-ctl-h: 30px;        /* 控件统一高度：按钮 / 输入框 / 图标按钮 */
-    --ghtk-ctl-radius: 6px;    /* 控件统一圆角 */
-    --ghtk-ctl-font: 12px;     /* 控件统一字号 */
-    --ghtk-ctl-gap: 8px;       /* 控件间距 */
-    --ghtk-icon: 14px;         /* 图标统一尺寸 */
-    --ghtk-gap: 8px;           /* 区块内部垂直间距 */
-    --ghtk-gap-lg: 12px;       /* 区块之间分隔间距 */
-    --ghtk-fs-label: 12px;     /* 区块小标题 / 字段标签 */
-    --ghtk-fs-small: 10.5px;   /* 辅助说明 / 分段控件文字 */
-    --ghtk-fs-mono: 11px;      /* 等宽内容（地址 / 命令） */
+    --ghtk-ctl-h: 30px;
+    --ghtk-ctl-radius: 6px;
+    --ghtk-ctl-font: 12px;
+    --ghtk-icon: 14px;
+    --ghtk-gap: 8px;
+    --ghtk-gap-lg: 12px;
+    --ghtk-fs-title: 14px;
+    --ghtk-fs-name: 13px;
+    --ghtk-fs-body: 12px;
+    --ghtk-fs-small: 11px;
+    --ghtk-font: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans", Helvetica, Arial, sans-serif;
+    --ghtk-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+
+    --ghtk-bg: var(--bgColor-default, #ffffff);
+    --ghtk-bg-muted: var(--bgColor-muted, #f6f8fa);
+    --ghtk-bg-inset: var(--bgColor-inset, #f6f8fa);
+    --ghtk-bg-neutral: var(--bgColor-neutral-muted, rgba(129, 139, 152, 0.12));
+    --ghtk-bg-hover: var(--control-bgColor-hover, #eff2f5);
+    --ghtk-bg-emphasis: var(--bgColor-emphasis, #25292e);
+    --ghtk-fg: var(--fgColor-default, #1f2328);
+    --ghtk-fg-muted: var(--fgColor-muted, #59636e);
+    --ghtk-fg-on-emphasis: var(--fgColor-onEmphasis, #ffffff);
+    --ghtk-border: var(--borderColor-default, #d1d9e0);
+    --ghtk-border-muted: var(--borderColor-muted, rgba(209, 217, 224, 0.7));
+    --ghtk-accent: var(--fgColor-accent, #0969da);
+    --ghtk-accent-bg: var(--bgColor-accent-muted, #ddf4ff);
+    --ghtk-accent-border: var(--borderColor-accent-muted, rgba(84, 174, 255, 0.4));
+    --ghtk-accent-emphasis: var(--bgColor-accent-emphasis, #0969da);
+    --ghtk-danger: var(--fgColor-danger, #d1242f);
+    --ghtk-danger-bg: var(--bgColor-danger-muted, #ffebe9);
+    --ghtk-danger-emphasis: var(--bgColor-danger-emphasis, #cf222e);
+    --ghtk-knob: var(--fgColor-onEmphasis, #ffffff);
+    --ghtk-focus: var(--focus-outlineColor, #0969da);
+    --ghtk-shadow: var(--shadow-floating-large, 0 0 0 1px rgba(209, 217, 224, 0.5), 0 24px 48px rgba(37, 41, 46, 0.2));
+    --ghtk-shadow-sm: var(--shadow-floating-small, 0 0 0 1px rgba(209, 217, 224, 0.5), 0 6px 18px rgba(37, 41, 46, 0.14));
+    --ghtk-backdrop: rgba(31, 35, 40, 0.28);
   }
 
-  /* ===== 根容器 reset：抵御 GitHub 全局样式侵入 ===== */
-  #ghtk-root,
-  #ghtk-root * {
-    box-sizing: border-box !important;
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans", Helvetica, Arial, sans-serif !important;
-    -webkit-font-smoothing: antialiased !important;
-    letter-spacing: normal !important;
-    text-transform: none !important;
-    text-shadow: none !important;
-    float: none !important;
-    outline: none !important;
+  /* ===== reset（零特异性） ===== */
+  :where(#ghtk-root),
+  :where(#ghtk-root) * {
+    box-sizing: border-box;
+    font-family: var(--ghtk-font);
+    -webkit-font-smoothing: antialiased;
+    letter-spacing: normal;
+    text-transform: none;
+    text-shadow: none;
+    float: none;
   }
-  #ghtk-root button,
-  #ghtk-root input {
-    margin: 0 !important;
-    font-size: var(--ghtk-ctl-font) !important;
-    line-height: 1 !important;
-    vertical-align: middle !important;
-    appearance: none !important;
-    -webkit-appearance: none !important;
+  :where(#ghtk-root) :where(button, input, textarea, select) {
+    margin: 0;
+    font-size: var(--ghtk-ctl-font);
+    line-height: 1;
+    color: inherit;
+    vertical-align: middle;
+    appearance: none;
+    -webkit-appearance: none;
   }
-  #ghtk-root a { text-decoration: none !important; }
-  #ghtk-root svg {
-    display: block !important;
-    flex-shrink: 0 !important;
-  }
-  #ghtk-root ::-webkit-scrollbar { width: 6px !important; height: 6px !important; }
-  #ghtk-root ::-webkit-scrollbar-thumb {
-    background: var(--borderColor-default, #d0d7de) !important;
-    border-radius: 3px !important;
-  }
-  #ghtk-root ::-webkit-scrollbar-track { background: transparent !important; }
+  :where(#ghtk-root) :where(a) { text-decoration: none; }
+  :where(#ghtk-root) :where(svg) { display: block; flex-shrink: 0; fill: currentColor; }
+  :where(#ghtk-root) :where(code, .ghtk-cmd, .ghtk-cmd *) { font-family: var(--ghtk-mono); }
+  #ghtk-root [hidden] { display: none; }
 
+  /* ===== 焦点：鼠标点击不出框，键盘操作显示焦点框 ===== */
+  :where(#ghtk-root) :focus { outline: none; }
+  :where(#ghtk-root) :focus-visible {
+    outline: 2px solid var(--ghtk-focus);
+    outline-offset: 2px;
+  }
+  #ghtk-root .ghtk-tab:focus-visible,
+  #ghtk-root .ghtk-rail-item:focus-visible,
+  #ghtk-root .ghtk-menu-item:focus-visible,
+  #ghtk-root .ghtk-settings > summary:focus-visible,
+  #ghtk-root .ghtk-cmd:focus-visible {
+    outline-offset: -2px;
+  }
+  #ghtk-root .ghtk-input:focus,
+  #ghtk-root .ghtk-modal-input:focus {
+    border-color: var(--ghtk-focus);
+    outline: 2px solid var(--ghtk-focus);
+    outline-offset: -1px;
+  }
+  #ghtk-root .ghtk-search:focus-within {
+    border-color: var(--ghtk-focus);
+    box-shadow: inset 0 0 0 1px var(--ghtk-focus);
+  }
+  #ghtk-root .ghtk-search input:focus { outline: none; }
+
+  #ghtk-root ::-webkit-scrollbar { width: 6px; height: 6px; }
+  #ghtk-root ::-webkit-scrollbar-thumb { background: var(--ghtk-border); border-radius: 3px; }
+  #ghtk-root ::-webkit-scrollbar-track { background: transparent; }
+
+  /* ===== 悬浮球 ===== */
   .ghtk-fab {
-    position: fixed !important;
-    right: 20px !important;
-    bottom: 24px !important;
-    width: 48px !important;
-    height: 48px !important;
-    border-radius: 50% !important;
-    background: #24292f !important;
-    color: #fff !important;
-    border: none !important;
-    box-shadow: 0 4px 16px rgba(0,0,0,.28) !important;
-    cursor: grab !important;
-    z-index: 2147483646 !important;
-    display: flex !important;
-    align-items: center !important;
-    justify-content: center !important;
-    transition: transform .15s ease, box-shadow .15s ease !important;
-    padding: 0 !important;
-    margin: 0 !important;
-    touch-action: none !important;
-    user-select: none !important;
-    -webkit-user-select: none !important;
+    position: fixed;
+    right: 20px;
+    bottom: 24px;
+    width: 48px;
+    height: 48px;
+    padding: 0;
+    border: none;
+    border-radius: 50%;
+    background: var(--ghtk-bg-emphasis);
+    color: var(--ghtk-fg-on-emphasis);
+    box-shadow: 0 4px 16px rgba(1, 4, 9, 0.28);
+    cursor: grab;
+    z-index: 2147483641;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    touch-action: none;
+    transition: transform .15s ease, box-shadow .15s ease;
   }
-  .ghtk-fab:hover {
-    transform: scale(1.08) !important;
-    box-shadow: 0 6px 20px rgba(0,0,0,.35) !important;
+  .ghtk-fab:hover { transform: translateY(-1px); box-shadow: 0 6px 20px rgba(1, 4, 9, 0.34); }
+  .ghtk-fab:active { cursor: grabbing; }
+  .ghtk-fab svg { width: 20px; height: 20px; }
+
+  /* ===== 面板 ===== */
+  .ghtk-panel {
+    position: fixed;
+    right: 20px;
+    bottom: 84px;
+    width: 400px;
+    height: 560px;
+    max-width: calc(100vw - 16px);
+    max-height: calc(100vh - 16px);
+    display: flex;
+    flex-direction: column;
+    background: var(--ghtk-bg);
+    color: var(--ghtk-fg);
+    border: 1px solid var(--ghtk-border);
+    border-radius: 14px;
+    box-shadow: var(--ghtk-shadow);
+    overflow: hidden;
+    z-index: 2147483640;
+    font-size: var(--ghtk-fs-body);
+    line-height: 1.5;
   }
-  .ghtk-fab.dragging {
-    cursor: grabbing !important;
-    transform: scale(1.04) !important;
-    transition: none !important;
-    box-shadow: 0 8px 24px rgba(0,0,0,.4) !important;
+  .ghtk-panel-head {
+    flex: 0 0 44px;
+    height: 44px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--ghtk-gap);
+    padding: 0 8px 0 16px;
+    background: var(--ghtk-bg-muted);
+    border-bottom: 1px solid var(--ghtk-border);
+    cursor: move;
+    user-select: none;
   }
-  .ghtk-fab svg {
-    width: 22px !important;
-    height: 22px !important;
-    fill: currentColor !important;
-    pointer-events: none !important;
+  .ghtk-panel-title {
+    min-width: 0;
+    font-size: var(--ghtk-fs-name);
+    font-weight: 600;
+    color: var(--ghtk-fg);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .ghtk-head-actions { display: flex; align-items: center; gap: 2px; }
+  .ghtk-panel-body { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+
+  /* ===== 图标按钮（30x30 热区） ===== */
+  .ghtk-icon-btn {
+    width: var(--ghtk-ctl-h);
+    height: var(--ghtk-ctl-h);
+    flex: 0 0 var(--ghtk-ctl-h);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    border: 1px solid transparent;
+    border-radius: var(--ghtk-ctl-radius);
+    background: transparent;
+    color: var(--ghtk-fg-muted);
+    cursor: pointer;
+    transition: background .12s, color .12s;
+  }
+  .ghtk-icon-btn:hover { background: var(--ghtk-bg-neutral); color: var(--ghtk-fg); }
+  .ghtk-icon-btn[aria-expanded="true"] { background: var(--ghtk-bg-neutral); color: var(--ghtk-fg); }
+  .ghtk-icon-btn svg { width: var(--ghtk-icon); height: var(--ghtk-icon); }
+  .ghtk-stroke { fill: none; stroke: currentColor; }
+
+  /* ===== Tab ===== */
+  .ghtk-tabs {
+    flex: 0 0 auto;
+    display: flex;
+    padding: 0 8px;
+    border-bottom: 1px solid var(--ghtk-border);
+  }
+  .ghtk-tab {
+    flex: 1;
+    height: 36px;
+    padding: 0 8px;
+    border: none;
+    border-bottom: 2px solid transparent;
+    margin-bottom: -1px;
+    background: transparent;
+    color: var(--ghtk-fg-muted);
+    font-size: var(--ghtk-fs-body);
+    cursor: pointer;
+  }
+  .ghtk-tab:hover { color: var(--ghtk-fg); }
+  .ghtk-tab.active {
+    color: var(--ghtk-accent);
+    font-weight: 600;
+    border-bottom-color: var(--ghtk-accent-emphasis);
+  }
+  .ghtk-tab-content { display: none; flex: 1; min-height: 0; flex-direction: column; }
+  .ghtk-tab-content.active { display: flex; }
+  .ghtk-scroll-area { flex: 1; min-height: 0; overflow-y: auto; }
+
+  /* ===== 按钮 ===== */
+  .ghtk-btn {
+    height: var(--ghtk-ctl-h);
+    min-width: 76px;
+    padding: 0 12px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    border: 1px solid var(--ghtk-border);
+    border-radius: var(--ghtk-ctl-radius);
+    background: var(--ghtk-bg-muted);
+    color: var(--ghtk-fg);
+    font-size: var(--ghtk-ctl-font);
+    font-weight: 500;
+    line-height: 1;
+    white-space: nowrap;
+    text-decoration: none;
+    cursor: pointer;
+    transition: background .12s, border-color .12s;
+  }
+  .ghtk-btn:hover { background: var(--ghtk-bg-hover); }
+  .ghtk-btn.primary {
+    background: var(--ghtk-accent-emphasis);
+    border-color: transparent;
+    color: var(--ghtk-fg-on-emphasis);
+    font-weight: 600;
+  }
+  .ghtk-btn.primary:hover { background: color-mix(in srgb, var(--ghtk-accent-emphasis) 88%, #000000); }
+  .ghtk-btn.danger-solid {
+    background: var(--ghtk-danger-emphasis);
+    border-color: transparent;
+    color: var(--ghtk-fg-on-emphasis);
+    font-weight: 600;
+  }
+  .ghtk-btn.danger-solid:hover { background: color-mix(in srgb, var(--ghtk-danger-emphasis) 88%, #000000); }
+  .ghtk-btn:disabled { opacity: .6; cursor: default; }
+  .ghtk-btn[aria-busy="true"] { opacity: .7; cursor: progress; pointer-events: none; }
+  .ghtk-btn.block { width: 100%; }
+  .ghtk-btn-row { display: flex; gap: var(--ghtk-gap); }
+  .ghtk-btn-row > .ghtk-btn { flex: 1; min-width: 0; }
+  .ghtk-spinner {
+    width: 12px;
+    height: 12px;
+    flex: 0 0 12px;
+    border: 2px solid currentColor;
+    border-right-color: transparent;
+    border-radius: 50%;
+    animation: ghtk-spin .7s linear infinite;
   }
 
+  /* ===== 输入框 ===== */
+  .ghtk-input,
+  .ghtk-modal-input {
+    width: 100%;
+    height: var(--ghtk-ctl-h);
+    padding: 0 10px;
+    border: 1px solid var(--ghtk-border);
+    border-radius: var(--ghtk-ctl-radius);
+    background: var(--ghtk-bg);
+    color: var(--ghtk-fg);
+    font-size: var(--ghtk-ctl-font);
+    line-height: normal;
+  }
+  .ghtk-input::placeholder,
+  .ghtk-modal-input::placeholder,
+  .ghtk-search input::placeholder { color: var(--ghtk-fg-muted); opacity: 1; }
+
+  .ghtk-chip {
+    display: inline-flex;
+    align-items: center;
+    height: 18px;
+    padding: 0 6px;
+    border: 1px solid var(--ghtk-accent-border);
+    border-radius: 999px;
+    background: var(--ghtk-accent-bg);
+    color: var(--ghtk-accent);
+    font-size: var(--ghtk-fs-small);
+    font-weight: 500;
+    line-height: 1;
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+
+  /* ===== 绑定 Tab：工具栏 ===== */
+  .ghtk-toolbar {
+    flex: 0 0 auto;
+    display: flex;
+    gap: var(--ghtk-gap);
+    padding: 10px 12px;
+    border-bottom: 1px solid var(--ghtk-border);
+  }
+  .ghtk-search {
+    flex: 1;
+    min-width: 0;
+    height: var(--ghtk-ctl-h);
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 0 10px;
+    border: 1px solid var(--ghtk-border);
+    border-radius: var(--ghtk-ctl-radius);
+    background: var(--ghtk-bg-muted);
+    color: var(--ghtk-fg-muted);
+  }
+  .ghtk-search svg { width: var(--ghtk-icon); height: var(--ghtk-icon); }
+  .ghtk-search input {
+    flex: 1;
+    min-width: 0;
+    height: 100%;
+    padding: 0;
+    border: none;
+    background: transparent;
+    color: var(--ghtk-fg);
+    font-size: var(--ghtk-ctl-font);
+    font-weight: 400;
+    line-height: normal;
+  }
+  .ghtk-toolbar-add {
+    border-color: var(--ghtk-border);
+    background: var(--ghtk-bg-muted);
+    color: var(--ghtk-fg);
+  }
+  .ghtk-toolbar-add.active {
+    border-color: var(--ghtk-accent-border);
+    background: var(--ghtk-accent-bg);
+    color: var(--ghtk-accent);
+  }
+
+  /* ===== 绑定 Tab：左栏 ===== */
+  .ghtk-split { flex: 1; min-height: 0; display: flex; }
+  .ghtk-rail {
+    flex: 0 0 152px;
+    width: 152px;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    background: var(--ghtk-bg-muted);
+    border-right: 1px solid var(--ghtk-border);
+  }
+  .ghtk-rail-head {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 12px 6px;
+    color: var(--ghtk-fg-muted);
+    font-size: var(--ghtk-fs-small);
+    font-weight: 600;
+  }
+  .ghtk-rail-list {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    padding: 0 6px 8px;
+  }
+  .ghtk-rail-item {
+    position: relative;
+    flex: 0 0 auto;
+    width: 100%;
+    height: 40px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 0 8px 0 10px;
+    border: none;
+    border-radius: var(--ghtk-ctl-radius);
+    background: transparent;
+    color: var(--ghtk-fg);
+    text-align: left;
+    cursor: pointer;
+  }
+  .ghtk-rail-item:hover { background: var(--ghtk-bg-neutral); }
+  .ghtk-rail-item.active { background: var(--ghtk-accent-bg); }
+  .ghtk-rail-item.active::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    top: 8px;
+    bottom: 8px;
+    width: 3px;
+    border-radius: 2px;
+    background: var(--ghtk-accent-emphasis);
+  }
+  .ghtk-rail-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+  .ghtk-rail-name {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    min-width: 0;
+    font-size: var(--ghtk-fs-name);
+    font-weight: 600;
+    line-height: 16px;
+    color: var(--ghtk-fg);
+  }
+  .ghtk-rail-name > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .ghtk-rail-name svg { width: 12px; height: 12px; color: var(--ghtk-accent); }
+  .ghtk-rail-item.active .ghtk-rail-name { color: var(--ghtk-accent); }
+  .ghtk-rail-owner {
+    font-size: var(--ghtk-fs-small);
+    line-height: 14px;
+    color: var(--ghtk-fg-muted);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .ghtk-rail-count {
+    flex-shrink: 0;
+    min-width: 16px;
+    text-align: right;
+    font-size: var(--ghtk-fs-small);
+    color: var(--ghtk-fg-muted);
+  }
+  .ghtk-rail-empty {
+    padding: 16px 8px;
+    text-align: center;
+    color: var(--ghtk-fg-muted);
+    font-size: var(--ghtk-fs-small);
+    line-height: 1.6;
+  }
+
+  /* 当前仓库入口：只在当前仓库还没进列表时出现 */
+  .ghtk-current-repo {
+    flex: 0 0 auto;
+    height: var(--ghtk-ctl-h);
+    margin: 0 6px 6px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 0 8px;
+    border: 1px dashed var(--ghtk-border);
+    border-radius: var(--ghtk-ctl-radius);
+    background: transparent;
+    color: var(--ghtk-fg-muted);
+    text-align: left;
+    cursor: pointer;
+  }
+  .ghtk-current-repo:hover {
+    border-color: var(--ghtk-accent-border);
+    background: var(--ghtk-accent-bg);
+    color: var(--ghtk-accent);
+  }
+  .ghtk-current-repo svg { width: 12px; height: 12px; }
+  .ghtk-cur-name {
+    flex: 1;
+    min-width: 0;
+    font-size: var(--ghtk-fs-body);
+    font-weight: 600;
+    color: var(--ghtk-fg);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .ghtk-current-repo:hover .ghtk-cur-name { color: var(--ghtk-accent); }
+  .ghtk-current-repo[aria-busy="true"] { opacity: .6; cursor: progress; }
+
+  /* ===== 绑定 Tab：右栏详情 ===== */
+  .ghtk-detail { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+  .ghtk-detail-head {
+    flex: 0 0 auto;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    padding: 8px 8px 8px 14px;
+    border-bottom: 1px solid var(--ghtk-border);
+  }
+  .ghtk-detail-title-row { display: flex; align-items: center; gap: 2px; min-width: 0; }
+  .ghtk-detail-title {
+    flex: 1;
+    min-width: 0;
+    font-size: var(--ghtk-fs-title);
+    font-weight: 600;
+    color: var(--ghtk-fg);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  a.ghtk-detail-title:hover { color: var(--ghtk-accent); text-decoration: underline; }
+  .ghtk-detail-sub {
+    font-size: var(--ghtk-fs-small);
+    color: var(--ghtk-fg-muted);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  /* about 区块固定 96px：加载中 / 无数据 / 有数据三种状态同高 */
+  .ghtk-about {
+    flex: 0 0 96px;
+    height: 96px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    padding: 8px 8px 8px 14px;
+    border-bottom: 1px solid var(--ghtk-border);
+    overflow: hidden;
+  }
+  .ghtk-about-top { display: flex; align-items: flex-start; gap: 4px; }
+  .ghtk-about-desc {
+    flex: 1;
+    min-width: 0;
+    font-size: var(--ghtk-fs-body);
+    line-height: 17px;
+    color: var(--ghtk-fg);
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+  .ghtk-about-desc.muted { color: var(--ghtk-fg-muted); }
+  .ghtk-about-more { margin-top: -6px; }
+  .ghtk-about-meta {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-height: 16px;
+    font-size: var(--ghtk-fs-small);
+    color: var(--ghtk-fg-muted);
+    white-space: nowrap;
+    overflow: hidden;
+  }
+  .ghtk-about-meta .ghtk-meta-item { display: inline-flex; align-items: center; gap: 4px; }
+  .ghtk-about-meta svg { width: 12px; height: 12px; }
+  .ghtk-lang-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+  .ghtk-topics { display: flex; gap: 4px; min-height: 18px; overflow: hidden; }
+  .ghtk-topic {
+    display: inline-block;
+    max-width: 120px;
+    height: 18px;
+    padding: 0 7px;
+    border-radius: 999px;
+    background: var(--ghtk-accent-bg);
+    color: var(--ghtk-accent);
+    font-size: var(--ghtk-fs-small);
+    font-weight: 500;
+    line-height: 18px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    flex-shrink: 0;
+  }
+  .ghtk-topics .ghtk-topic { min-width: 0; }
+  .ghtk-topic.more { background: var(--ghtk-bg-neutral); color: var(--ghtk-fg-muted); }
+
+  .ghtk-detail-body {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding: 10px 14px;
+  }
+  .ghtk-sec-label { font-size: var(--ghtk-fs-small); font-weight: 600; color: var(--ghtk-fg-muted); }
+  .ghtk-drow {
+    flex: 0 0 auto;
+    height: 32px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+  }
+  .ghtk-drow-branch { flex-shrink: 0; color: var(--ghtk-fg-muted); font-size: var(--ghtk-fs-small); }
+  .ghtk-drow-name {
+    flex: 0 1 auto;
+    min-width: 0;
+    font-size: var(--ghtk-fs-body);
+    color: var(--ghtk-accent);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .ghtk-drow-name:hover { text-decoration: underline; }
+  .ghtk-drow-pin { display: inline-flex; flex-shrink: 0; color: var(--ghtk-accent); }
+  .ghtk-drow-pin svg { width: 12px; height: 12px; }
+  .ghtk-drow-rm { margin-left: auto; opacity: .5; }
+  .ghtk-drow:hover .ghtk-drow-rm,
+  .ghtk-drow-rm:focus-visible { opacity: 1; }
+  .ghtk-drow-rm:hover { color: var(--ghtk-danger); background: var(--ghtk-danger-bg); }
+  .ghtk-empty-cta {
+    width: 100%;
+    min-height: 56px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    padding: 10px;
+    border: 1px dashed var(--ghtk-border);
+    border-radius: 8px;
+    background: transparent;
+    color: var(--ghtk-fg-muted);
+    font-size: var(--ghtk-fs-body);
+    line-height: 1.4;
+    cursor: pointer;
+  }
+  .ghtk-empty-cta strong { color: var(--ghtk-accent); font-weight: 600; }
+  .ghtk-empty-cta:hover { border-color: var(--ghtk-accent-border); background: var(--ghtk-accent-bg); }
+  .ghtk-empty-cta[aria-busy="true"] { opacity: .6; cursor: progress; pointer-events: none; }
+  .ghtk-detail-foot {
+    flex: 0 0 auto;
+    padding: 10px 14px 12px;
+    border-top: 1px solid var(--ghtk-border);
+  }
+
+  /* ===== 绑定 Tab：添加视图 / 空状态 ===== */
+  .ghtk-addview { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+  .ghtk-addview-head {
+    flex: 0 0 auto;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    padding: 12px 14px 10px;
+    border-bottom: 1px solid var(--ghtk-border);
+  }
+  .ghtk-addview-title { font-size: var(--ghtk-fs-title); font-weight: 600; color: var(--ghtk-fg); }
+  .ghtk-addview-body {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: var(--ghtk-gap-lg);
+    padding: 12px 14px;
+  }
+  .ghtk-field { display: flex; flex-direction: column; gap: 6px; }
+  .ghtk-field-label { font-size: var(--ghtk-fs-small); font-weight: 600; color: var(--ghtk-fg-muted); }
+  .ghtk-field-row { display: flex; gap: var(--ghtk-gap); }
+  .ghtk-field-row > .ghtk-input { flex: 1; min-width: 0; width: auto; }
+  .ghtk-field-row > .ghtk-btn { flex: 0 0 auto; }
+  .ghtk-detect {
+    display: flex;
+    flex-direction: column;
+    gap: var(--ghtk-gap);
+    padding: 10px 12px;
+    border: 1px solid var(--ghtk-accent-border);
+    border-radius: 8px;
+    background: var(--ghtk-accent-bg);
+  }
+  .ghtk-detect-label { font-size: var(--ghtk-fs-small); font-weight: 600; color: var(--ghtk-accent); }
+  .ghtk-detect-name {
+    font-size: var(--ghtk-fs-name);
+    font-weight: 600;
+    color: var(--ghtk-fg);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .ghtk-note { font-size: var(--ghtk-fs-small); color: var(--ghtk-fg-muted); line-height: 1.5; }
+  .ghtk-blank {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: var(--ghtk-gap-lg);
+    padding: 24px;
+    text-align: center;
+    color: var(--ghtk-fg-muted);
+    font-size: var(--ghtk-fs-body);
+  }
+
+  /* ===== 加速 Tab ===== */
+  .ghtk-accel { display: flex; flex-direction: column; gap: 16px; padding: 14px 16px 16px; }
+  .ghtk-accel-sec { display: flex; flex-direction: column; gap: var(--ghtk-gap-lg); }
+  .ghtk-accel-sec + .ghtk-accel-sec { padding-top: 16px; border-top: 1px solid var(--ghtk-border-muted); }
+  .ghtk-sec-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--ghtk-gap);
+    min-height: var(--ghtk-ctl-h);
+  }
+  .ghtk-sec-title { flex-shrink: 0; font-size: var(--ghtk-fs-body); font-weight: 600; color: var(--ghtk-fg); }
+  .ghtk-sec-note {
+    min-width: 0;
+    font-size: var(--ghtk-fs-small);
+    color: var(--ghtk-fg-muted);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .ghtk-seg {
+    display: inline-flex;
+    flex-shrink: 0;
+    height: var(--ghtk-ctl-h);
+    padding: 2px;
+    gap: 2px;
+    border: 1px solid var(--ghtk-border);
+    border-radius: var(--ghtk-ctl-radius);
+    background: var(--ghtk-bg-muted);
+  }
+  .ghtk-seg button {
+    height: 100%;
+    min-width: 52px;
+    padding: 0 10px;
+    border: none;
+    border-radius: 4px;
+    background: transparent;
+    color: var(--ghtk-fg-muted);
+    font-size: var(--ghtk-fs-small);
+    font-weight: 600;
+    cursor: pointer;
+  }
+  .ghtk-seg button:hover { color: var(--ghtk-fg); }
+  .ghtk-seg button.on {
+    background: var(--ghtk-bg);
+    color: var(--ghtk-accent);
+    box-shadow: 0 0 0 1px var(--ghtk-border);
+  }
+  .ghtk-cmd {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-height: 36px;
+    padding: 8px 10px;
+    border: 1px solid var(--ghtk-border);
+    border-radius: var(--ghtk-ctl-radius);
+    background: var(--ghtk-bg-inset);
+    color: var(--ghtk-fg);
+    font-size: var(--ghtk-fs-body);
+    line-height: 1.5;
+    white-space: nowrap;
+    overflow-x: auto;
+  }
+  .ghtk-cmd-prompt { flex-shrink: 0; color: var(--ghtk-fg-muted); user-select: none; }
+  .ghtk-hint {
+    padding-top: 10px;
+    border-top: 1px dashed var(--ghtk-border);
+    color: var(--ghtk-fg-muted);
+    font-size: var(--ghtk-fs-small);
+    line-height: 1.7;
+  }
+  .ghtk-hint code {
+    padding: 0 4px;
+    border-radius: 4px;
+    background: var(--ghtk-bg-neutral);
+    font-size: var(--ghtk-fs-small);
+  }
+  .ghtk-settings {
+    border: 1px solid var(--ghtk-border);
+    border-radius: 8px;
+    overflow: hidden;
+  }
+  .ghtk-settings > summary {
+    height: 36px;
+    display: flex;
+    align-items: center;
+    gap: var(--ghtk-gap);
+    padding: 0 10px 0 12px;
+    background: var(--ghtk-bg-muted);
+    color: var(--ghtk-fg);
+    font-size: var(--ghtk-fs-body);
+    font-weight: 600;
+    list-style: none;
+    cursor: pointer;
+    user-select: none;
+  }
+  .ghtk-settings > summary::-webkit-details-marker { display: none; }
+  .ghtk-settings > summary::marker { content: ""; }
+  .ghtk-settings[open] > summary { border-bottom: 1px solid var(--ghtk-border); }
+  .ghtk-settings-value {
+    flex: 1;
+    min-width: 0;
+    text-align: right;
+    font-size: var(--ghtk-fs-small);
+    font-weight: 400;
+    color: var(--ghtk-fg-muted);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .ghtk-settings > summary svg { width: 12px; height: 12px; color: var(--ghtk-fg-muted); transition: transform .15s; }
+  .ghtk-settings[open] > summary svg { transform: rotate(180deg); }
+  .ghtk-settings-body { display: flex; flex-direction: column; gap: var(--ghtk-gap); padding: 12px; }
+
+  /* ===== 插件 Tab ===== */
+  .ghtk-plugins { display: flex; flex-direction: column; padding: 8px 16px 12px; }
+  .ghtk-plugin-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--ghtk-gap-lg);
+    padding: 12px 0;
+    border-bottom: 1px solid var(--ghtk-border-muted);
+  }
+  .ghtk-plugin-text { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+  .ghtk-plugin-name { font-size: var(--ghtk-fs-name); font-weight: 600; color: var(--ghtk-fg); }
+  .ghtk-plugin-desc { font-size: var(--ghtk-fs-small); color: var(--ghtk-fg-muted); line-height: 1.5; }
+  .ghtk-plugins-foot {
+    padding-top: 12px;
+    text-align: center;
+    font-size: var(--ghtk-fs-small);
+    color: var(--ghtk-fg-muted);
+  }
+  .ghtk-switch {
+    position: relative;
+    flex: 0 0 40px;
+    width: 40px;
+    height: 22px;
+    padding: 0;
+    border: 1px solid var(--ghtk-border);
+    border-radius: 999px;
+    background: var(--ghtk-bg-neutral);
+    cursor: pointer;
+    transition: background .15s, border-color .15s;
+  }
+  .ghtk-switch::before { content: ""; position: absolute; inset: -5px -3px; }
+  .ghtk-switch-knob {
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    background: var(--ghtk-knob);
+    box-shadow: 0 1px 2px rgba(31, 35, 40, 0.3);
+    transition: transform .15s;
+    pointer-events: none;
+  }
+  .ghtk-switch.on { background: var(--ghtk-accent-emphasis); border-color: transparent; }
+  .ghtk-switch.on .ghtk-switch-knob { transform: translateX(18px); }
+
+  /* ===== 气泡 ===== */
+  .ghtk-popover {
+    position: fixed;
+    z-index: 2147483644;
+    font-size: var(--ghtk-fs-body);
+    line-height: 1.5;
+    display: flex;
+    flex-direction: column;
+    background: var(--ghtk-bg);
+    color: var(--ghtk-fg);
+    border: 1px solid var(--ghtk-border);
+    border-radius: 12px;
+    box-shadow: var(--ghtk-shadow);
+    animation: ghtk-pop .14s ease-out;
+  }
+  .ghtk-pop-inner {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    border-radius: 12px;
+    overflow: hidden;
+  }
+  .ghtk-pop-arrow {
+    position: absolute;
+    z-index: 1;
+    width: 10px;
+    height: 10px;
+    background: var(--ghtk-bg);
+    border: 1px solid var(--ghtk-border);
+    transform: rotate(45deg);
+  }
+  .ghtk-pop-arrow.up { top: -6px; border-right-color: transparent; border-bottom-color: transparent; }
+  .ghtk-pop-arrow.down { bottom: -6px; border-left-color: transparent; border-top-color: transparent; }
+  .ghtk-pop-head {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--ghtk-gap);
+    padding: 6px 6px 6px 14px;
+    border-bottom: 1px solid var(--ghtk-border);
+  }
+  .ghtk-pop-title {
+    min-width: 0;
+    font-size: var(--ghtk-fs-title);
+    font-weight: 600;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .ghtk-pop-body {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: var(--ghtk-gap-lg);
+    padding: 12px 14px 14px;
+  }
+  .ghtk-pop-desc { font-size: var(--ghtk-fs-body); line-height: 1.6; color: var(--ghtk-fg); word-break: break-word; }
+  .ghtk-pop-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px 12px; }
+  .ghtk-pop-cell { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+  .ghtk-pop-k { font-size: var(--ghtk-fs-small); color: var(--ghtk-fg-muted); }
+  .ghtk-pop-v {
+    font-size: var(--ghtk-fs-body);
+    font-weight: 600;
+    color: var(--ghtk-fg);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .ghtk-pop-group { display: flex; flex-direction: column; gap: 6px; }
+  .ghtk-pop-sec { font-size: var(--ghtk-fs-small); font-weight: 600; color: var(--ghtk-fg-muted); }
+  .ghtk-pop-topics { display: flex; flex-wrap: wrap; gap: 4px; }
+  .ghtk-pop-topics .ghtk-topic { max-width: none; }
+  .ghtk-pop-home { font-size: var(--ghtk-fs-body); color: var(--ghtk-accent); word-break: break-all; }
+  .ghtk-pop-home:hover { text-decoration: underline; }
+  .ghtk-pop-note { font-size: var(--ghtk-fs-small); color: var(--ghtk-fg-muted); }
+
+  /* ===== 下拉菜单 ===== */
+  .ghtk-menu {
+    position: fixed;
+    z-index: 2147483644;
+    min-width: 160px;
+    font-size: var(--ghtk-fs-body);
+    line-height: 1.5;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    padding: 4px;
+    background: var(--ghtk-bg);
+    border: 1px solid var(--ghtk-border);
+    border-radius: 10px;
+    box-shadow: var(--ghtk-shadow-sm);
+    animation: ghtk-pop .12s ease-out;
+  }
+  .ghtk-menu-item {
+    height: var(--ghtk-ctl-h);
+    display: flex;
+    align-items: center;
+    padding: 0 10px;
+    border: none;
+    border-radius: var(--ghtk-ctl-radius);
+    background: transparent;
+    color: var(--ghtk-fg);
+    font-size: var(--ghtk-fs-body);
+    text-align: left;
+    white-space: nowrap;
+    cursor: pointer;
+  }
+  .ghtk-menu-item:hover,
+  .ghtk-menu-item:focus { background: var(--ghtk-bg-neutral); }
+  .ghtk-menu-item.danger { color: var(--ghtk-danger); }
+  .ghtk-menu-item.danger:hover,
+  .ghtk-menu-item.danger:focus { background: var(--ghtk-danger-bg); }
+
+  /* ===== 对话框（定位由 JS 用 important 内联覆盖到面板区域） ===== */
+  .ghtk-modal-mask {
+    position: fixed;
+    inset: 0;
+    z-index: 2147483645;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 16px;
+    background: var(--ghtk-backdrop);
+    animation: ghtk-fade .12s ease-out;
+  }
+  .ghtk-modal-mask.in-panel { padding: 12px; }
+  .ghtk-modal {
+    width: 100%;
+    max-width: 340px;
+    font-size: var(--ghtk-fs-body);
+    line-height: 1.5;
+    max-height: 100%;
+    display: flex;
+    flex-direction: column;
+    background: var(--ghtk-bg);
+    color: var(--ghtk-fg);
+    border: 1px solid var(--ghtk-border);
+    border-radius: 12px;
+    box-shadow: var(--ghtk-shadow);
+    overflow: hidden;
+    animation: ghtk-pop .14s ease-out;
+  }
+  .ghtk-modal-header {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--ghtk-gap);
+    padding: 8px 8px 8px 16px;
+    border-bottom: 1px solid var(--ghtk-border);
+  }
+  .ghtk-modal-title { font-size: var(--ghtk-fs-title); font-weight: 600; color: var(--ghtk-fg); }
+  .ghtk-modal-body {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: var(--ghtk-gap-lg);
+    padding: 16px;
+  }
+  .ghtk-modal-content { font-size: var(--ghtk-fs-body); line-height: 1.6; color: var(--ghtk-fg); word-break: break-word; }
+  .ghtk-modal-content b { font-weight: 600; }
+  .ghtk-modal-footer {
+    flex: 0 0 auto;
+    display: flex;
+    justify-content: flex-end;
+    gap: var(--ghtk-gap);
+    padding: 12px 16px;
+    border-top: 1px solid var(--ghtk-border);
+  }
+
+  /* ===== 提示条（单例） ===== */
+  .ghtk-toast {
+    position: fixed;
+    left: 50%;
+    bottom: 32px;
+    z-index: 2147483647;
+    max-width: calc(100vw - 32px);
+    padding: 8px 14px;
+    border-radius: 8px;
+    background: var(--ghtk-bg-emphasis);
+    color: var(--ghtk-fg-on-emphasis);
+    font-size: var(--ghtk-fs-body);
+    line-height: 1.4;
+    box-shadow: var(--ghtk-shadow-sm);
+    opacity: 0;
+    transform: translate(-50%, 8px);
+    transition: opacity .18s ease, transform .18s ease;
+    pointer-events: none;
+  }
+  .ghtk-toast.show { opacity: 1; transform: translate(-50%, 0); }
+
+  @keyframes ghtk-fade { from { opacity: 0; } to { opacity: 1; } }
+  @keyframes ghtk-pop { from { opacity: 0; transform: translateY(-4px) scale(.98); } to { opacity: 1; transform: none; } }
+  @keyframes ghtk-spin { to { transform: rotate(360deg); } }
+
+  @media (max-width: 480px) {
     .ghtk-panel {
-      position: fixed !important;
-      width: 400px !important;
-      height: 560px !important;
-      max-height: 80vh !important;
-      background: var(--bgColor-default, #ffffff) !important;
-      border: 1px solid var(--borderColor-default, #d0d7de) !important;
-      border-radius: 14px !important;
-      box-shadow: 0 12px 40px rgba(31,35,40,.2) !important;
-      z-index: 2147483647 !important;
-      font-size: 13px !important;
-      color: var(--fgColor-default, #1f2328) !important;
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Noto Sans, Helvetica, Arial, sans-serif !important;
-      display: flex !important;
-      flex-direction: column !important;
-      overflow: hidden !important;
-      animation: ghtk-in .15s ease-out !important;
-    }
-    @keyframes ghtk-in {
-      from { opacity: 0; transform: translateY(8px) scale(.98); }
-      to   { opacity: 1; transform: none; }
-    }
-
-    .ghtk-panel header {
-      display: flex !important;
-      align-items: center !important;
-      justify-content: space-between !important;
-      padding: 0 12px 0 16px !important;
-      height: 44px !important;
-      border-bottom: 1px solid var(--borderColor-muted, #d8dee4) !important;
-      cursor: move !important;
-      user-select: none !important;
-      background: var(--bgColor-muted, #f6f8fa) !important;
-      flex-shrink: 0 !important;
-    }
-    .ghtk-panel header .title {
-      font-weight: 600 !important;
-      font-size: 13px !important;
-      color: var(--fgColor-muted, #59636e) !important;
-    }
-    .ghtk-panel .close-btn {
-      width: var(--ghtk-ctl-h) !important;
-      height: var(--ghtk-ctl-h) !important;
-      border: none !important;
-      background: none !important;
-      border-radius: var(--ghtk-ctl-radius) !important;
-      cursor: pointer !important;
-      color: var(--fgColor-muted, #59636e) !important;
-      font-size: 15px !important;
-      display: flex !important;
-      align-items: center !important;
-      justify-content: center !important;
-    }
-    /* 云端备份入口：与关闭按钮组成一组，紧贴右侧 */
-    .ghtk-panel .head-actions {
-      display: flex !important;
-      align-items: center !important;
-      gap: 2px !important;
-      flex-shrink: 0 !important;
-    }
-    .ghtk-panel .cloud-btn {
-      width: var(--ghtk-ctl-h) !important;
-      height: var(--ghtk-ctl-h) !important;
-      border: none !important;
-      background: none !important;
-      border-radius: var(--ghtk-ctl-radius) !important;
-      cursor: pointer !important;
-      color: var(--fgColor-muted, #59636e) !important;
-      display: flex !important;
-      align-items: center !important;
-      justify-content: center !important;
-      padding: 0 !important;
-      margin: 0 !important;
-    }
-    .ghtk-panel .cloud-btn svg {
-      width: 15px !important;
-      height: 15px !important;
-      /* stroke 风格图标：描边取 currentColor，不设 fill */
-      fill: none !important;
-      stroke: currentColor !important;
-    }
-    .ghtk-panel .cloud-btn:hover {
-      background: var(--bgColor-neutral-muted, #818b981f) !important;
-      color: #0969da !important;
-    }
-    .ghtk-panel .close-btn:hover {
-      background: var(--bgColor-neutral-muted, #818b981f) !important;
-      color: var(--fgColor-default, #1f2328) !important;
-    }
-
-    .ghtk-tabs {
-      display: flex !important;
-      border-bottom: 1px solid var(--borderColor-muted, #d8dee4) !important;
-      background: var(--bgColor-default, #fff) !important;
-      flex-shrink: 0 !important;
-      padding: 0 8px !important;
-    }
-    .ghtk-tab {
-      flex: 1 !important;
-      height: 36px !important;
-      padding: 0 8px !important;
-      text-align: center !important;
-      font-size: var(--ghtk-ctl-font) !important;
-      font-weight: 500 !important;
-      color: var(--fgColor-muted, #59636e) !important;
-      cursor: pointer !important;
-      border: none !important;
-      background: none !important;
-      border-bottom: 2px solid transparent !important;
-      transition: color .15s, border-color .15s !important;
-    }
-    .ghtk-tab:hover { color: var(--fgColor-default, #1f2328) !important; }
-    .ghtk-tab.active {
-      color: #0969da !important;
-      border-bottom-color: #0969da !important;
-      font-weight: 600 !important;
-    }
-
-    .ghtk-panel .body {
-      padding: 0 !important;
-      overflow: hidden !important;
-      flex: 1 !important;
-      display: flex !important;
-      flex-direction: column !important;
-      min-height: 0 !important;
-    }
-    .ghtk-tab-content {
-      display: none !important;
-      flex-direction: column !important;
-      height: 100% !important;
-      min-height: 0 !important;
-      overflow: hidden !important;
-    }
-    .ghtk-tab-content.active { display: flex !important; }
-
-    /* ===== 工具栏：搜索框 + 图标按钮 ===== */
-    .ghtk-toolbar {
-      display: flex !important;
-      align-items: center !important;
-      gap: var(--ghtk-ctl-gap) !important;
-      padding: 8px 12px !important;
-      border-bottom: 1px solid var(--borderColor-muted, #d8dee4) !important;
-      background: var(--bgColor-default, #fff) !important;
-      flex-shrink: 0 !important;
-    }
-    .ghtk-search {
-      flex: 1 !important;
-      min-width: 0 !important;
-      display: flex !important;
-      align-items: center !important;
-      gap: 6px !important;
-      height: var(--ghtk-ctl-h) !important;
-      padding: 0 10px !important;
-      border: 1px solid var(--borderColor-default, #d0d7de) !important;
-      border-radius: var(--ghtk-ctl-radius) !important;
-      background: var(--bgColor-muted, #f6f8fa) !important;
-      box-sizing: border-box !important;
-    }
-    .ghtk-search:focus-within {
-      border-color: #0969da !important;
-      background: var(--bgColor-default, #fff) !important;
-    }
-    .ghtk-search svg {
-      width: 13px !important;
-      height: 13px !important;
-      flex-shrink: 0 !important;
-      color: var(--fgColor-muted, #59636e) !important;
-    }
-    .ghtk-search input {
-      flex: 1 !important;
-      min-width: 0 !important;
-      height: 100% !important;
-      border: none !important;
-      outline: none !important;
-      background: none !important;
-      font-size: var(--ghtk-ctl-font) !important;
-      color: var(--fgColor-default, #1f2328) !important;
-      padding: 0 !important;
-    }
-    .ghtk-search input::placeholder {
-      color: var(--fgColor-muted, #59636e) !important;
-    }
-    .ghtk-toolbar-btn {
-      flex-shrink: 0 !important;
-      width: var(--ghtk-ctl-h) !important;
-      height: var(--ghtk-ctl-h) !important;
-      border: 1px solid var(--borderColor-default, #d0d7de) !important;
-      border-radius: var(--ghtk-ctl-radius) !important;
-      background: var(--bgColor-muted, #f6f8fa) !important;
-      color: var(--fgColor-default, #1f2328) !important;
-      cursor: pointer !important;
-      display: inline-flex !important;
-      align-items: center !important;
-      justify-content: center !important;
-      padding: 0 !important;
-      box-sizing: border-box !important;
-    }
-    .ghtk-toolbar-btn:hover { background: var(--bgColor-neutral-muted, #818b981f) !important; }
-    .ghtk-toolbar-btn svg {
-      width: var(--ghtk-icon) !important;
-      height: var(--ghtk-icon) !important;
-      fill: currentColor !important;
-    }
-    .ghtk-toolbar-btn.active {
-      background: #0969da !important;
-      border-color: #0969da !important;
-      color: #fff !important;
-    }
-
-    /* ===== 主从布局：左栏上游列表 + 右栏详情 ===== */
-    .ghtk-split {
-      flex: 1 !important;
-      display: flex !important;
-      min-height: 0 !important;
-    }
-    .ghtk-rail {
-      width: 152px !important;
-      flex-shrink: 0 !important;
-      border-right: 1px solid var(--borderColor-muted, #d8dee4) !important;
-      background: var(--bgColor-muted, #f6f8fa) !important;
-      display: flex !important;
-      flex-direction: column !important;
-      min-height: 0 !important;
-    }
-    .ghtk-rail-head {
-      display: flex !important;
-      align-items: center !important;
-      justify-content: space-between !important;
-      gap: 6px !important;
-      padding: 10px 12px 6px !important;
-      font-size: 10px !important;
-      font-weight: 600 !important;
-      color: var(--fgColor-muted, #59636e) !important;
-      letter-spacing: .5px !important;
-      text-transform: uppercase !important;
-      flex-shrink: 0 !important;
-    }
-    .ghtk-rail-state {
-      font-size: 10px !important;
-      font-weight: 500 !important;
-      letter-spacing: 0 !important;
-      text-transform: none !important;
-      color: var(--fgColor-muted, #59636e) !important;
-      overflow: hidden !important;
-      text-overflow: ellipsis !important;
-      white-space: nowrap !important;
-    }
-    /* ===== 左栏「当前仓库」入口：图钉 + 仓库名 + 状态图标，hover 出说明 ===== */
-    .ghtk-current-repo {
-      position: relative !important;
-      display: flex !important;
-      align-items: center !important;
-      justify-content: flex-start !important;
-      gap: 5px !important;
-      height: var(--ghtk-ctl-h) !important;
-      margin: 0 6px 4px !important;
-      padding: 0 8px !important;
-      border: 1px solid var(--borderColor-default, #d0d7de) !important;
-      border-radius: var(--ghtk-ctl-radius) !important;
-      background: var(--bgColor-default, #fff) !important;
-      color: var(--fgColor-muted, #59636e) !important;
-      cursor: pointer !important;
-      flex-shrink: 0 !important;
-      transition: background .12s, color .12s, border-color .12s !important;
-      box-sizing: border-box !important;
-    }
-    .ghtk-current-repo[hidden] { display: none !important; }
-    .ghtk-current-repo:hover {
-      background: #ddf4ff !important;
-      border-color: #54aeff !important;
-      color: #0969da !important;
-    }
-    .ghtk-current-repo .pin {
-      width: 13px !important;
-      height: 13px !important;
-      fill: currentColor !important;
-      flex-shrink: 0 !important;
-    }
-    /* 仓库名：占满中间，超长省略 */
-    .ghtk-current-repo .name {
-      flex: 1 !important;
-      min-width: 0 !important;
-      font-size: 11.5px !important;
-      font-weight: 600 !important;
-      color: var(--fgColor-default, #1f2328) !important;
-      text-align: left !important;
-      overflow: hidden !important;
-      text-overflow: ellipsis !important;
-      white-space: nowrap !important;
-    }
-    .ghtk-current-repo:hover .name { color: #0969da !important; }
-    .ghtk-current-repo.bound:hover .name { color: #1a7f37 !important; }
-    .ghtk-current-repo .badge {
-      width: 11px !important;
-      height: 11px !important;
-      flex-shrink: 0 !important;
-    }
-    /* 已绑定：实心勾（绿）；未绑定：空心圆（灰）。
-       必须带 #ghtk-root 前缀，否则会被 reset 段的 #ghtk-root svg（含 id 选择器）压过。 */
-    #ghtk-root .ghtk-current-repo .bound-icon {
-      display: none !important;
-      fill: #1a7f37 !important;
-    }
-    #ghtk-root .ghtk-current-repo .unbound-icon {
-      display: block !important;
-      fill: #afb8c1 !important;
-    }
-    #ghtk-root .ghtk-current-repo.bound .bound-icon { display: block !important; }
-    #ghtk-root .ghtk-current-repo.bound .unbound-icon { display: none !important; }
-    .ghtk-current-repo.bound { color: #1a7f37 !important; }
-    .ghtk-current-repo.bound:hover {
-      background: #dafbe1 !important;
-      border-color: #4ac26b !important;
-      color: #1a7f37 !important;
-    }
-
-    .ghtk-rail-list {
-      flex: 1 !important;
-      overflow-y: auto !important;
-      padding: 0 6px 8px !important;
-      min-height: 0 !important;
-    }
-    .ghtk-rail-list::-webkit-scrollbar { width: 6px !important; }
-    .ghtk-rail-list::-webkit-scrollbar-thumb {
-      background: var(--borderColor-default, #d0d7de) !important;
-      border-radius: 3px !important;
-    }
-    .ghtk-rail-item {
-      position: relative !important;
-      display: flex !important;
-      align-items: center !important;
-      gap: 6px !important;
-      height: 32px !important;
-      padding: 0 8px !important;
-      border-radius: 5px !important;
-      font-size: 12px !important;
-      color: var(--fgColor-default, #1f2328) !important;
-      cursor: pointer !important;
-    }
-    .ghtk-rail-item:hover { background: var(--bgColor-neutral-muted, #818b981f) !important; }
-    .ghtk-rail-item.active {
-      background: #fff !important;
-      color: #0550ae !important;
-      font-weight: 600 !important;
-      box-shadow: 0 1px 3px rgba(31,35,40,.08) !important;
-    }
-    .ghtk-rail-item.active::before {
-      content: "" !important;
-      position: absolute !important;
-      left: 0 !important;
-      top: 6px !important;
-      bottom: 6px !important;
-      width: 2px !important;
-      border-radius: 2px !important;
-      background: #0969da !important;
-    }
-    .ghtk-rail-name {
-      flex: 1 !important;
-      min-width: 0 !important;
-      overflow: hidden !important;
-      text-overflow: ellipsis !important;
-      white-space: nowrap !important;
-    }
-    .ghtk-rail-n {
-      flex-shrink: 0 !important;
-      font-size: 10px !important;
-      color: var(--fgColor-muted, #59636e) !important;
-      font-variant-numeric: tabular-nums !important;
-    }
-    .ghtk-rail-item.active .ghtk-rail-n { color: #0550ae !important; }
-    /* 与当前页面相关的绑定（当前仓库即其上游，或是其下游） */
-    .ghtk-rail-dot {
-      flex-shrink: 0 !important;
-      width: 5px !important;
-      height: 5px !important;
-      border-radius: 50% !important;
-      background: #0969da !important;
-    }
-    .ghtk-rail-item.related:not(.active) .ghtk-rail-name { color: #0550ae !important; }
-    .ghtk-rail-empty {
-      padding: 16px 8px !important;
-      text-align: center !important;
-      font-size: 11px !important;
-      color: var(--fgColor-muted, #59636e) !important;
-      line-height: 1.5 !important;
-    }
-
-    .ghtk-detail {
-      flex: 1 !important;
-      display: flex !important;
-      flex-direction: column !important;
-      min-width: 0 !important;
-      min-height: 0 !important;
-    }
-    .ghtk-detail-head {
-      padding: 12px 14px 10px !important;
-      border-bottom: 1px solid var(--borderColor-muted, #d8dee4) !important;
-      flex-shrink: 0 !important;
-    }
-
-    /* ===== 上游 about 区块：固定 88px，内容溢出走气泡查看 ===== */
-    .ghtk-about {
-      height: 88px !important;
-      flex: 0 0 88px !important;
-      padding: 9px 12px 8px 14px !important;
-      border-bottom: 1px solid var(--borderColor-muted, #d8dee4) !important;
-      display: flex !important;
-      flex-direction: column !important;
-      min-height: 0 !important;
-      overflow: hidden !important;
-      position: relative !important;
-    }
-    .ghtk-about-top {
-      display: flex !important;
-      align-items: flex-start !important;
-      gap: 6px !important;
-      margin-bottom: 5px !important;
-      min-height: 0 !important;
-    }
-    .ghtk-about-desc {
-      flex: 1 !important;
-      min-width: 0 !important;
-      font-size: 11px !important;
-      line-height: 1.5 !important;
-      color: var(--fgColor-default, #1f2328) !important;
-      /* 固定 2 行，超出省略 */
-      display: -webkit-box !important;
-      -webkit-line-clamp: 2 !important;
-      -webkit-box-orient: vertical !important;
-      overflow: hidden !important;
-      text-overflow: ellipsis !important;
-      word-break: break-word !important;
-      overflow-wrap: anywhere !important;
-    }
-    .ghtk-about-desc.muted {
-      color: var(--fgColor-muted, #59636e) !important;
-      font-style: italic !important;
-    }
-    .ghtk-about-expand {
-      flex-shrink: 0 !important;
-      width: 22px !important;
-      height: 22px !important;
-      border: none !important;
-      background: none !important;
-      border-radius: 5px !important;
-      color: var(--fgColor-muted, #59636e) !important;
-      display: inline-flex !important;
-      align-items: center !important;
-      justify-content: center !important;
-      cursor: pointer !important;
-      padding: 0 !important;
-      transition: background .12s, color .12s !important;
-    }
-    .ghtk-about-expand:hover {
-      background: #ddf4ff !important;
-      color: #0969da !important;
-    }
-    .ghtk-about-expand svg {
-      width: 13px !important;
-      height: 13px !important;
-      fill: currentColor !important;
-    }
-
-    .ghtk-about-meta {
-      display: flex !important;
-      flex-wrap: nowrap !important;
-      gap: 9px !important;
-      font-size: 10px !important;
-      color: var(--fgColor-muted, #59636e) !important;
-      align-items: center !important;
-      overflow: hidden !important;
-      max-height: 16px !important;
-      flex-shrink: 0 !important;
-    }
-    .ghtk-about-meta .item {
-      display: inline-flex !important;
-      align-items: center !important;
-      gap: 3px !important;
-      min-width: 0 !important;
-      max-width: 100% !important;
-    }
-    .ghtk-about-meta .item span {
-      overflow: hidden !important;
-      text-overflow: ellipsis !important;
-      white-space: nowrap !important;
-      max-width: 96px !important;
-    }
-    .ghtk-about-meta svg {
-      width: 11px !important;
-      height: 11px !important;
-      fill: var(--fgColor-muted, #59636e) !important;
-      flex-shrink: 0 !important;
-    }
-
-    .ghtk-lang-dot {
-      width: 7px !important;
-      height: 7px !important;
-      border-radius: 50% !important;
-      background: #0969da !important;
-      flex-shrink: 0 !important;
-    }
-    .ghtk-topics {
-      display: flex !important;
-      flex-wrap: nowrap !important;
-      gap: 3px !important;
-      margin-top: 5px !important;
-      overflow: hidden !important;
-      max-height: 17px !important;
-      flex-shrink: 0 !important;
-    }
-    .ghtk-topic {
-      font-size: 9.5px !important;
-      font-weight: 500 !important;
-      color: #0550ae !important;
-      background: #ddf4ff !important;
-      border: 1px solid #b6e3ff !important;
-      border-radius: 20px !important;
-      padding: 1px 7px !important;
-      line-height: 1.6 !important;
-      white-space: nowrap !important;
-    }
-    .ghtk-detail-title {
-      display: flex !important;
-      align-items: center !important;
-      gap: 7px !important;
-      margin-bottom: 5px !important;
-    }
-    .ghtk-detail-title .name {
-      font-size: 14px !important;
-      font-weight: 600 !important;
-      overflow: hidden !important;
-      text-overflow: ellipsis !important;
-      white-space: nowrap !important;
-    }
-    .ghtk-chip {
-      flex-shrink: 0 !important;
-      font-size: 9.5px !important;
-      font-weight: 600 !important;
-      color: #0550ae !important;
-      background: #ddf4ff !important;
-      border: 1px solid #b6e3ff !important;
-      border-radius: 20px !important;
-      padding: 1px 6px !important;
-      line-height: 1.6 !important;
-    }
-    .ghtk-detail-sub {
-      font-size: 10.5px !important;
-      color: var(--fgColor-muted, #59636e) !important;
-      line-height: 1.6 !important;
-    }
-    .ghtk-detail-sub b { color: var(--fgColor-default, #1f2328) !important; font-weight: 600 !important; }
-    .ghtk-detail-sub code {
-      font-family: ui-monospace, SFMono-Regular, monospace !important;
-      font-size: 10px !important;
-      background: #afb8c133 !important;
-      padding: 1px 4px !important;
-      border-radius: 3px !important;
-    }
-    .ghtk-detail-body {
-      flex: 1 !important;
-      overflow-y: auto !important;
-      padding: 10px 14px !important;
-      min-height: 0 !important;
-    }
-    .ghtk-detail-body::-webkit-scrollbar { width: 6px !important; }
-    .ghtk-detail-body::-webkit-scrollbar-thumb {
-      background: var(--borderColor-default, #d0d7de) !important;
-      border-radius: 3px !important;
-    }
-    .ghtk-sec-label {
-      font-size: 10px !important;
-      font-weight: 600 !important;
-      color: var(--fgColor-muted, #59636e) !important;
-      letter-spacing: .5px !important;
-      text-transform: uppercase !important;
-      margin-bottom: 4px !important;
-    }
-    .ghtk-drow {
-      display: flex !important;
-      align-items: center !important;
-      gap: 6px !important;
-      height: var(--ghtk-ctl-h) !important;
-      font-size: 11.5px !important;
-      color: var(--fgColor-muted, #59636e) !important;
-      border-radius: 5px !important;
-      padding: 0 4px !important;
-    }
-    .ghtk-drow:hover { background: var(--bgColor-muted, #f6f8fa) !important; }
-    .ghtk-drow-dash { color: var(--fgColor-muted, #59636e) !important; flex-shrink: 0 !important; }
-    .ghtk-drow a {
-      flex: 1 !important;
-      min-width: 0 !important;
-      color: #0969da !important;
-      text-decoration: none !important;
-      overflow: hidden !important;
-      text-overflow: ellipsis !important;
-      white-space: nowrap !important;
-    }
-    .ghtk-drow a:hover { text-decoration: underline !important; }
-    /* 下游行内标记：我的 Fork / 当前仓库 */
-    .ghtk-drow .ghtk-chip {
-      flex-shrink: 0 !important;
-      font-size: 9px !important;
-      padding: 0 5px !important;
-    }
-    .ghtk-drow-rm { opacity: 0 !important; }
-    .ghtk-drow:hover .ghtk-drow-rm { opacity: 1 !important; }
-    .ghtk-drow-rm:hover { color: #cf222e !important; background: #ffebe9 !important; }
-    .ghtk-dempty {
-      padding: 16px 12px !important;
-      border: 1px dashed var(--borderColor-default, #d0d7de) !important;
-      border-radius: 8px !important;
-      text-align: center !important;
-      font-size: 11px !important;
-      color: var(--fgColor-muted, #59636e) !important;
-    }
-    .ghtk-detail-foot {
-      border-top: 1px solid var(--borderColor-muted, #d8dee4) !important;
-      padding: 10px 14px !important;
-      flex-shrink: 0 !important;
-    }
-    .ghtk-foot-main {
-      display: flex !important;
-      gap: var(--ghtk-ctl-gap) !important;
-    }
-    .ghtk-foot-main .ghtk-btn {
-      flex: 1 !important;
-      min-width: 0 !important;
-    }
-    /* 第二排：次要操作，同样等宽 */
-    .ghtk-foot-second {
-      margin-top: var(--ghtk-ctl-gap) !important;
-    }
-    .ghtk-detail-empty {
-      flex: 1 !important;
-      display: flex !important;
-      flex-direction: column !important;
-      align-items: center !important;
-      justify-content: center !important;
-      gap: 10px !important;
-      font-size: 12px !important;
-      color: var(--fgColor-muted, #59636e) !important;
-    }
-
-    /* ===== 添加上游视图 ===== */
-    .ghtk-addview {
-      flex: 1 !important;
-      display: flex !important;
-      flex-direction: column !important;
-      min-width: 0 !important;
-      min-height: 0 !important;
-    }
-    .ghtk-addview-head {
-      padding: 12px 14px 10px !important;
-      border-bottom: 1px solid var(--borderColor-muted, #d8dee4) !important;
-      flex-shrink: 0 !important;
-    }
-    .ghtk-addview-title {
-      font-size: 14px !important;
-      font-weight: 600 !important;
-      margin-bottom: 3px !important;
-    }
-    .ghtk-addview-sub {
-      font-size: 10.5px !important;
-      color: var(--fgColor-muted, #59636e) !important;
-    }
-    .ghtk-addview-body {
-      flex: 1 !important;
-      padding: 14px !important;
-      min-height: 0 !important;
-      overflow-y: auto !important;
-    }
-    .ghtk-field-label {
-      display: block !important;
-      font-size: 10.5px !important;
-      font-weight: 600 !important;
-      color: var(--fgColor-muted, #59636e) !important;
-      margin-bottom: 5px !important;
-    }
-    .ghtk-field { display: flex !important; gap: var(--ghtk-ctl-gap) !important; }
-    .ghtk-field input {
-      flex: 1 !important;
-      min-width: 0 !important;
-      height: var(--ghtk-ctl-h) !important;
-      padding: 0 10px !important;
-      border: 1px solid var(--borderColor-default, #d0d7de) !important;
-      border-radius: var(--ghtk-ctl-radius) !important;
-      font-size: var(--ghtk-ctl-font) !important;
-      font-family: inherit !important;
-      color: var(--fgColor-default, #1f2328) !important;
-      background: var(--bgColor-default, #fff) !important;
-      box-sizing: border-box !important;
-    }
-    .ghtk-field input:focus {
-      outline: 2px solid #0969da !important;
-      outline-offset: -1px !important;
-    }
-    .ghtk-hint {
-      font-size: 10px !important;
-      color: var(--fgColor-muted, #59636e) !important;
-      margin-top: 6px !important;
-      line-height: 1.6 !important;
-    }
-    .ghtk-note {
-      margin-top: 12px !important;
-      font-size: 11px !important;
-      color: var(--fgColor-muted, #59636e) !important;
-      line-height: 1.6 !important;
-    }
-    .ghtk-detect {
-      margin-top: 14px !important;
-      padding: 9px 10px !important;
-      border: 1px solid #54aeff !important;
-      background: #ddf4ff !important;
-      border-radius: 8px !important;
-    }
-    .ghtk-detect-label {
-      font-size: 10px !important;
-      color: #0550ae !important;
-      font-weight: 600 !important;
-      margin-bottom: 2px !important;
-    }
-    .ghtk-detect-repo {
-      font-size: 12px !important;
-      font-weight: 600 !important;
-      margin-bottom: 8px !important;
-      overflow: hidden !important;
-      text-overflow: ellipsis !important;
-      white-space: nowrap !important;
-    }
-    .ghtk-detect-actions { display: flex !important; gap: 6px !important; }
-    .ghtk-detect-actions .ghtk-btn.primary { flex: 1 !important; }
-    .ghtk-addview-foot {
-      border-top: 1px solid var(--borderColor-muted, #d8dee4) !important;
-      padding: 10px 14px !important;
-      display: flex !important;
-      gap: var(--ghtk-ctl-gap) !important;
-      justify-content: flex-end !important;
-      flex-shrink: 0 !important;
-    }
-
-    .ghtk-form-row {
-      display: flex !important;
-      gap: var(--ghtk-ctl-gap) !important;
-    }
-    .ghtk-form-row input {
-      flex: 1 !important;
-      min-width: 0 !important;
-      height: var(--ghtk-ctl-h) !important;
-      padding: 0 10px !important;
-      border: 1px solid var(--borderColor-default, #d0d7de) !important;
-      border-radius: var(--ghtk-ctl-radius) !important;
-      font-size: var(--ghtk-ctl-font) !important;
-      background: var(--bgColor-default, #fff) !important;
-      color: var(--fgColor-default, #1f2328) !important;
-      box-sizing: border-box !important;
-    }
-    .ghtk-form-row input:focus {
-      outline: 2px solid #0969da !important;
-      outline-offset: -1px !important;
-    }
-
-    .ghtk-scroll-area {
-      flex: 1 !important;
-      min-height: 0 !important;
-      overflow-y: auto !important;
-      padding: 12px 16px 16px !important;
-    }
-    .ghtk-scroll-area::-webkit-scrollbar { width: 6px !important; }
-    .ghtk-scroll-area::-webkit-scrollbar-thumb {
-      background: var(--borderColor-default, #d0d7de) !important;
-      border-radius: 3px !important;
-    }
-
-    .ghtk-icon-btn {
-      width: var(--ghtk-ctl-h) !important;
-      height: var(--ghtk-ctl-h) !important;
-      border: none !important;
-      background: none !important;
-      border-radius: var(--ghtk-ctl-radius) !important;
-      color: var(--fgColor-muted, #59636e) !important;
-      cursor: pointer !important;
-      display: inline-flex !important;
-      align-items: center !important;
-      justify-content: center !important;
-      padding: 0 !important;
-      transition: background .12s, color .12s !important;
-    }
-    .ghtk-icon-btn:hover {
-      background: var(--bgColor-neutral-muted, #818b981f) !important;
-      color: var(--fgColor-default, #1f2328) !important;
-    }
-    .ghtk-icon-btn.danger:hover {
-      background: #ffebe9 !important;
-      color: #cf222e !important;
-    }
-    .ghtk-icon-btn svg {
-      width: var(--ghtk-icon) !important;
-      height: var(--ghtk-icon) !important;
-      fill: currentColor !important;
-    }
-
-    .ghtk-btn {
-      display: inline-flex !important;
-      align-items: center !important;
-      justify-content: center !important;
-      height: var(--ghtk-ctl-h) !important;
-      padding: 0 12px !important;
-      border-radius: var(--ghtk-ctl-radius) !important;
-      border: 1px solid var(--borderColor-default, #d0d7de) !important;
-      background: var(--bgColor-muted, #f6f8fa) !important;
-      color: var(--fgColor-default, #1f2328) !important;
-      font-size: var(--ghtk-ctl-font) !important;
-      font-weight: 500 !important;
-      font-family: inherit !important;
-      cursor: pointer !important;
-      text-decoration: none !important;
-      white-space: nowrap !important;
-      box-sizing: border-box !important;
-      line-height: 1 !important;
-      min-width: 76px !important;
-    }
-    .ghtk-btn:hover { background: var(--bgColor-neutral-muted, #818b981f) !important; }
-    .ghtk-btn:disabled { opacity: 0.5 !important; cursor: not-allowed !important; }
-    .ghtk-btn.primary {
-      background: #0969da !important;
-      color: #fff !important;
-      border-color: #0969da !important;
-    }
-    .ghtk-btn.primary:hover { background: #0860ca !important; }
-    .ghtk-btn.success {
-      background: #1a7f37 !important;
-      color: #fff !important;
-      border-color: #1a7f37 !important;
-    }
-    .ghtk-btn.success:hover { background: #176f31 !important; }
-    .ghtk-btn.danger {
-      color: #cf222e !important;
-      border-color: #ffcecb !important;
-      background: #fff !important;
-    }
-    .ghtk-btn.danger:hover { background: #ffebe9 !important; }
-    /* 危险实心按钮：用于删除类二次确认 */
-    .ghtk-btn.danger-solid {
-      background: #cf222e !important;
-      color: #fff !important;
-      border-color: #cf222e !important;
-    }
-    .ghtk-btn.danger-solid:hover { background: #a40e26 !important; }
-
-    /* 同排按钮等宽 */
-    .ghtk-btn-row {
-      display: flex !important;
-      gap: var(--ghtk-ctl-gap) !important;
-    }
-    .ghtk-btn-row .ghtk-btn { flex: 1 !important; }
-
-    .ghtk-plugin-item {
-      display: flex !important;
-      justify-content: space-between !important;
-      align-items: flex-start !important;
-      gap: 12px !important;
-      padding: 12px 0 !important;
-      border-bottom: 1px solid var(--borderColor-muted, #d8dee4) !important;
-    }
-    .ghtk-plugin-item:last-child { border-bottom: none !important; }
-    .ghtk-plugin-item .desc {
-      font-size: 11px !important;
-      color: var(--fgColor-muted, #59636e) !important;
-      margin-top: 3px !important;
-      line-height: 1.4 !important;
-    }
-    /* 启用/禁用开关：GitHub 风格 */
-    .ghtk-switch {
-      flex-shrink: 0 !important;
-      width: 40px !important;
-      height: 22px !important;
-      border: 1px solid var(--borderColor-default, #d0d7de) !important;
-      border-radius: 11px !important;
-      background: var(--bgColor-muted, #f6f8fa) !important;
-      cursor: pointer !important;
-      position: relative !important;
-      padding: 0 !important;
-      transition: background .15s, border-color .15s !important;
-      box-sizing: border-box !important;
-    }
-    .ghtk-switch-knob {
-      position: absolute !important;
-      top: 2px !important;
-      left: 2px !important;
-      width: 16px !important;
-      height: 16px !important;
-      border-radius: 50% !important;
-      background: #fff !important;
-      box-shadow: 0 1px 2px rgba(31,35,40,.2) !important;
-      transition: left .15s ease !important;
-    }
-    .ghtk-switch.on {
-      background: #0969da !important;
-      border-color: #0969da !important;
-    }
-    .ghtk-switch.on .ghtk-switch-knob {
-      left: 20px !important;
-    }
-
-    .ghtk-modal-mask {
-      position: fixed !important;
-      inset: 0 !important;
-      background: rgba(0,0,0,.45) !important;
-      z-index: 2147483647 !important;
-      display: flex !important;
-      align-items: center !important;
-      justify-content: center !important;
-      animation: ghtk-fade .15s ease !important;
-    }
-    @keyframes ghtk-fade {
-      from { opacity: 0; }
-      to { opacity: 1; }
-    }
-    .ghtk-modal {
-      width: 340px !important;
-      max-width: 90vw !important;
-      background: var(--bgColor-default, #fff) !important;
-      border-radius: 12px !important;
-      box-shadow: 0 16px 48px rgba(0,0,0,.25) !important;
-      overflow: hidden !important;
-      animation: ghtk-scale .15s ease !important;
-    }
-    /* 跟随面板：遮罩只盖住面板区域，内边距收窄避免溢出 */
-    .ghtk-modal-mask.in-panel {
-      background: rgba(31,35,40,.28) !important;
-      padding: 12px !important;
-      animation: ghtk-fade .12s ease !important;
-    }
-    .ghtk-modal-mask.in-panel .ghtk-modal {
-      width: 100% !important;
-      max-width: 340px !important;
-      max-height: 100% !important;
-      display: flex !important;
-      flex-direction: column !important;
-    }
-    .ghtk-modal-mask.in-panel .ghtk-modal-body {
-      overflow-y: auto !important;
-      min-height: 0 !important;
-    }
-    @keyframes ghtk-scale {
-      from { opacity: 0; transform: scale(.95); }
-      to { opacity: 1; transform: none; }
-    }
-    .ghtk-modal-header {
-      display: flex !important;
-      align-items: center !important;
-      justify-content: space-between !important;
-      padding: 14px 16px !important;
-      border-bottom: 1px solid var(--borderColor-muted, #d8dee4) !important;
-    }
-    .ghtk-modal-title {
-      font-weight: 600 !important;
-      font-size: 14px !important;
-    }
-    .ghtk-modal-close {
-      width: var(--ghtk-ctl-h) !important;
-      height: var(--ghtk-ctl-h) !important;
-      border: none !important;
-      background: none !important;
-      border-radius: var(--ghtk-ctl-radius) !important;
-      cursor: pointer !important;
-      color: var(--fgColor-muted, #59636e) !important;
-      font-size: 15px !important;
-    }
-    .ghtk-modal-close:hover {
-      background: var(--bgColor-neutral-muted, #818b981f) !important;
-    }
-    .ghtk-modal-body { padding: 16px !important; }
-    .ghtk-modal-content {
-      font-size: 13px !important;
-      line-height: 1.5 !important;
-      margin-bottom: 12px !important;
-      color: var(--fgColor-default, #1f2328) !important;
-    }
-    .ghtk-modal-input {
-      width: 100% !important;
-      height: var(--ghtk-ctl-h) !important;
-      padding: 0 10px !important;
-      border: 1px solid var(--borderColor-default, #d0d7de) !important;
-      border-radius: var(--ghtk-ctl-radius) !important;
-      font-size: var(--ghtk-ctl-font) !important;
-      box-sizing: border-box !important;
-      background: var(--bgColor-default, #fff) !important;
-      color: var(--fgColor-default, #1f2328) !important;
-    }
-    .ghtk-modal-input:focus {
-      outline: 2px solid #0969da !important;
-      outline-offset: -1px !important;
-    }
-    .ghtk-modal-footer {
-      display: flex !important;
-      justify-content: flex-end !important;
-      gap: var(--ghtk-ctl-gap) !important;
-      padding: 12px 16px !important;
-      border-top: 1px solid var(--borderColor-muted, #d8dee4) !important;
-      background: var(--bgColor-muted, #f6f8fa) !important;
-    }
-    .ghtk-modal-footer .ghtk-btn { min-width: 76px !important; }
-
-    /* ===== 气泡（about 完整信息） ===== */
-    .ghtk-popover {
-      position: fixed !important;
-      /* 必须高于面板（2147483647），否则会被面板遮住 */
-      z-index: 2147483647 !important;
-      width: 328px !important;
-      max-height: 440px !important;
-      background: var(--bgColor-default, #fff) !important;
-      border: 1px solid var(--borderColor-default, #d0d7de) !important;
-      border-radius: 12px !important;
-      box-shadow: 0 12px 32px rgba(31,35,40,.22) !important;
-      display: flex !important;
-      flex-direction: column !important;
-      overflow: hidden !important;
-      font-size: 12px !important;
-      color: var(--fgColor-default, #1f2328) !important;
-      animation: ghtk-pop-in .13s ease-out !important;
-    }
-    @keyframes ghtk-pop-in {
-      from { opacity: 0; transform: translateY(-4px); }
-      to { opacity: 1; transform: none; }
-    }
-    .ghtk-pop-arrow {
-      position: absolute !important;
-      top: -6px !important;
-      width: 10px !important;
-      height: 10px !important;
-      background: #fff !important;
-      border-left: 1px solid var(--borderColor-default, #d0d7de) !important;
-      border-top: 1px solid var(--borderColor-default, #d0d7de) !important;
-      transform: rotate(45deg) !important;
-      z-index: 1 !important;
-    }
-    .ghtk-pop-arrow.up {
-      top: auto !important;
-      border-left: none !important;
-      border-top: none !important;
-      border-right: 1px solid var(--borderColor-default, #d0d7de) !important;
-      border-bottom: 1px solid var(--borderColor-default, #d0d7de) !important;
-    }
-    .ghtk-pop-head {
-      display: flex !important;
-      align-items: center !important;
-      gap: 8px !important;
-      padding: 11px 12px 9px !important;
-      border-bottom: 1px solid var(--borderColor-muted, #d8dee4) !important;
-      flex-shrink: 0 !important;
-    }
-    .ghtk-pop-title {
-      flex: 1 !important;
-      min-width: 0 !important;
-      font-size: 12.5px !important;
-      font-weight: 600 !important;
-      overflow: hidden !important;
-      text-overflow: ellipsis !important;
-      white-space: nowrap !important;
-    }
-    .ghtk-pop-close {
-      width: 24px !important;
-      height: 24px !important;
-      font-size: 13px !important;
-      flex-shrink: 0 !important;
-    }
-    .ghtk-pop-body {
-      padding: 11px 12px !important;
-      overflow-y: auto !important;
-      min-height: 0 !important;
-      flex: 1 !important;
-    }
-    .ghtk-pop-body::-webkit-scrollbar { width: 6px !important; }
-    .ghtk-pop-body::-webkit-scrollbar-thumb {
-      background: var(--borderColor-default, #d0d7de) !important;
-      border-radius: 3px !important;
-    }
-    .ghtk-pop-desc {
-      font-size: 11.5px !important;
-      line-height: 1.6 !important;
-      color: var(--fgColor-default, #1f2328) !important;
-      margin-bottom: 10px !important;
-      word-break: break-word !important;
-      overflow-wrap: anywhere !important;
-    }
-    .ghtk-pop-grid {
-      display: grid !important;
-      grid-template-columns: 1fr 1fr !important;
-      gap: 7px 10px !important;
-      margin-bottom: 10px !important;
-    }
-    .ghtk-pop-cell { min-width: 0 !important; }
-    .ghtk-pop-k {
-      font-size: 9.5px !important;
-      color: var(--fgColor-muted, #59636e) !important;
-      text-transform: uppercase !important;
-      letter-spacing: .4px !important;
-      margin-bottom: 1px !important;
-    }
-    .ghtk-pop-v {
-      font-size: 11px !important;
-      font-weight: 600 !important;
-      color: var(--fgColor-default, #1f2328) !important;
-      overflow: hidden !important;
-      text-overflow: ellipsis !important;
-      white-space: nowrap !important;
-    }
-    .ghtk-pop-sec {
-      font-size: 9.5px !important;
-      font-weight: 600 !important;
-      color: var(--fgColor-muted, #59636e) !important;
-      letter-spacing: .5px !important;
-      text-transform: uppercase !important;
-      margin-bottom: 5px !important;
-    }
-    .ghtk-pop-topics {
-      display: flex !important;
-      flex-wrap: wrap !important;
-      gap: 4px !important;
-      margin-bottom: 10px !important;
-    }
-    .ghtk-pop-home {
-      font-size: 11px !important;
-      margin-bottom: 2px !important;
-    }
-    .ghtk-pop-home a {
-      color: #0969da !important;
-      text-decoration: none !important;
-      word-break: break-all !important;
-    }
-    .ghtk-pop-home a:hover { text-decoration: underline !important; }
-    .ghtk-pop-note {
-      font-size: 10.5px !important;
-      color: #9a6700 !important;
-      margin-top: 6px !important;
-    }
-    .ghtk-pop-foot {
-      display: flex !important;
-      gap: 6px !important;
-      padding: 9px 12px !important;
-      border-top: 1px solid var(--borderColor-muted, #d8dee4) !important;
-      background: var(--bgColor-muted, #f6f8fa) !important;
-      flex-shrink: 0 !important;
-    }
-    .ghtk-pop-foot .ghtk-btn {
-      flex: 1 !important;
-      min-width: 0 !important;
-      height: 28px !important;
-      font-size: 11px !important;
-    }
-
-    .ghtk-toast {
-      position: fixed !important;
-      left: 50% !important;
-      bottom: 28px !important;
-      transform: translateX(-50%) translateY(10px) !important;
-      padding: 8px 16px !important;
-      border-radius: 8px !important;
-      background: #24292f !important;
-      color: #fff !important;
-      font-size: 13px !important;
-      z-index: 2147483647 !important;
-      opacity: 0 !important;
-      transition: opacity .2s, transform .2s !important;
-      pointer-events: none !important;
-      max-width: 80vw !important;
-      text-align: center !important;
-    }
-    .ghtk-toast.show {
-      opacity: 1 !important;
-      transform: translateX(-50%) translateY(0) !important;
-    }
-
-    .ghtk-empty {
-      font-size: 12px !important;
-      color: var(--fgColor-muted, #59636e) !important;
-      padding: 20px 0 !important;
-      text-align: center !important;
-      line-height: 1.5 !important;
-    }
-
-    /* ===== 加速 Tab：仓库地址 + ego 克隆 ===== */
-    .ghtk-accel-setting {
-      padding: 12px 16px !important;
-      border-bottom: 1px solid var(--borderColor-muted, #d8dee4) !important;
-    }
-    .ghtk-accel-setting label {
-      font-size: var(--ghtk-fs-label) !important;
-      color: var(--fgColor-muted, #59636e) !important;
-      display: block !important;
-      margin-bottom: 6px !important;
-    }
-    .ghtk-accel-body {
-      padding: 12px 16px 16px !important;
-    }
-    .ghtk-accel-repo {
-      display: flex !important;
-      flex-direction: column !important;
-      gap: 10px !important;
-      margin-bottom: 0 !important;
-    }
-    .ghtk-accel-url {
-      font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace !important;
-      font-size: var(--ghtk-fs-mono) !important;
-      word-break: break-all !important;
-      line-height: 1.5 !important;
-      padding: 8px 10px !important;
-      margin: 0 !important;
-      background: var(--bgColor-muted, #f6f8fa) !important;
-      border-radius: var(--ghtk-ctl-radius) !important;
-      color: var(--fgColor-default, #1f2328) !important;
-    }
-    .ghtk-divider {
-      height: 1px !important;
-      background: var(--borderColor-muted, #d8dee4) !important;
-      margin: var(--ghtk-gap-lg) 0 !important;
-    }
-    .ghtk-ego {
-      display: flex !important;
-      flex-direction: column !important;
-      gap: 12px !important;
-    }
-    /* 命令框单独加一点上方留白，和身份输入框拉开层次 */
-    .ghtk-ego .ghtk-cmd-wrap {
-      margin-top: 2px !important;
-    }
-    /* 复制按钮与上方命令框、下方说明的关系更清晰 */
-    .ghtk-ego #ghtk-copy-ego {
-      margin-top: 2px !important;
-    }
-    .ghtk-ego-head {
-      display: flex !important;
-      align-items: center !important;
-      justify-content: space-between !important;
-      gap: var(--ghtk-gap) !important;
-      margin-bottom: 0 !important;
-    }
-    .ghtk-ego-title {
-      font-size: var(--ghtk-fs-label) !important;
-      font-weight: 600 !important;
-      color: var(--fgColor-default, #1f2328) !important;
-      flex-shrink: 0 !important;
-    }
-    /* 分段控件：高度与其它控件对齐（30px） */
-    .ghtk-seg {
-      display: flex !important;
-      width: 118px !important;
-      height: var(--ghtk-ctl-h) !important;
-      flex-shrink: 0 !important;
-      border: 1px solid var(--borderColor-default, #d0d7de) !important;
-      border-radius: var(--ghtk-ctl-radius) !important;
-      overflow: hidden !important;
-      background: var(--bgColor-muted, #f6f8fa) !important;
-      box-sizing: border-box !important;
-    }
-    .ghtk-seg button {
-      flex: 1 !important;
-      height: 100% !important;
-      border: none !important;
-      background: none !important;
-      font-size: var(--ghtk-fs-small) !important;
-      font-weight: 500 !important;
-      font-family: inherit !important;
-      color: var(--fgColor-muted, #59636e) !important;
-      cursor: pointer !important;
-      padding: 0 !important;
-    }
-    .ghtk-seg button.on {
-      background: var(--bgColor-default, #fff) !important;
-      color: #0969da !important;
-      font-weight: 600 !important;
-      box-shadow: 0 1px 3px rgba(31,35,40,.1) !important;
-    }
-    /* 身份输入框 */
-    .ghtk-field-input {
-      width: 100% !important;
-      height: var(--ghtk-ctl-h) !important;
-      padding: 0 10px !important;
-      margin: 0 !important;
-      border: 1px solid var(--borderColor-default, #d0d7de) !important;
-      border-radius: var(--ghtk-ctl-radius) !important;
-      font-size: var(--ghtk-ctl-font) !important;
-      font-family: inherit !important;
-      color: var(--fgColor-default, #1f2328) !important;
-      background: var(--bgColor-default, #fff) !important;
-      box-sizing: border-box !important;
-    }
-    .ghtk-field-input:focus {
-      outline: 2px solid #0969da !important;
-      outline-offset: -1px !important;
-    }
-    /* 命令预览：固定高度 + 横向滚动，绝不撑高面板 */
-    .ghtk-cmd-wrap {
-      position: relative !important;
-      margin: 0 !important;
-    }
-    .ghtk-cmd {
-      height: 38px !important;
-      padding: 0 10px !important;
-      border: 1px solid var(--borderColor-default, #d0d7de) !important;
-      border-radius: var(--ghtk-ctl-radius) !important;
-      background: var(--bgColor-muted, #f6f8fa) !important;
-      font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace !important;
-      font-size: var(--ghtk-fs-mono) !important;
-      line-height: 36px !important;
-      color: var(--fgColor-default, #1f2328) !important;
-      white-space: pre !important;
-      overflow-x: auto !important;
-      overflow-y: hidden !important;
-      box-sizing: border-box !important;
-    }
-    .ghtk-cmd::-webkit-scrollbar { height: 4px !important; }
-    .ghtk-cmd::-webkit-scrollbar-thumb {
-      background: var(--borderColor-default, #d0d7de) !important;
-      border-radius: 2px !important;
-    }
-    .ghtk-cmd-prompt {
-      color: var(--fgColor-muted, #59636e) !important;
-      margin-right: 6px !important;
-    }
-    .ghtk-hint-list {
-      margin-top: 4px !important;
-      padding-top: 10px !important;
-      border-top: 1px dashed var(--borderColor-muted, #d8dee4) !important;
-      font-size: var(--ghtk-fs-small) !important;
-      line-height: 1.6 !important;
-      color: var(--fgColor-muted, #59636e) !important;
-    }
-    .ghtk-hint-list code {
-      font-family: ui-monospace, SFMono-Regular, monospace !important;
-      font-size: var(--ghtk-fs-small) !important;
-      background: #afb8c133 !important;
-      padding: 1px 4px !important;
-      border-radius: 3px !important;
-    }
-
-    @media (max-width: 480px) {
-      .ghtk-panel {
-        left: 8px !important;
-        right: 8px !important;
-        width: auto !important;
-        height: 70vh !important;
-        bottom: 80px !important;
-        top: auto !important;
-      }
-    }
+      left: 8px;
+      right: 8px;
+      top: auto;
+      bottom: 80px;
+      width: auto;
+      height: 70vh;
+    }
+    .ghtk-rail { flex-basis: 128px; width: 128px; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    #ghtk-root *,
+    #ghtk-root *::before,
+    #ghtk-root *::after {
+      animation: none;
+      transition: none;
+    }
+    #ghtk-root .ghtk-spinner { animation: ghtk-spin 1.6s linear infinite; }
+  }
+  @media (hover: none) {
+    .ghtk-drow-rm { opacity: 1; }
+  }
 `;
+  function important(css) {
+    const frames = [];
+    const masked = css.replace(/@keyframes[^{]*\{(?:[^{}]*\{[^{}]*\})*[^{}]*\}/g, (m) => {
+      frames.push(m);
+      return "@@GHTK_FRAME_" + (frames.length - 1) + "@@";
+    });
+    const out = masked.replace(
+      /((?:^|[{;]|\*\/)\s*)(-?[a-z][a-z-]*\s*:\s*)([^;{}]+?)(\s*)(?=[;}])/g,
+      (m, pre, prop, val, ws) => /!important$/.test(val) ? m : pre + prop + val + " !important" + ws
+    );
+    return out.replace(/@@GHTK_FRAME_(\d+)@@/g, (_m, i) => frames[Number(i)]);
+  }
+  const CSS$1 = important(CSS_SOURCE);
   function injectGlobalStyles() {
     if (document.getElementById(STYLE_ID)) return;
     const style = document.createElement("style");
     style.id = STYLE_ID;
-    style.textContent = CSS;
+    style.textContent = CSS$1;
     (document.head || document.documentElement).appendChild(style);
     if (!observerStarted) {
       observerStarted = true;
@@ -1524,7 +1167,7 @@
         if (!document.getElementById(STYLE_ID)) {
           const s = document.createElement("style");
           s.id = STYLE_ID;
-          s.textContent = CSS;
+          s.textContent = CSS$1;
           (document.head || document.documentElement).appendChild(s);
         }
       };
@@ -1544,34 +1187,186 @@
     }
     return root;
   }
+  function escapeHtml(s) {
+    return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+  }
+  function compactNum(n) {
+    if (n < 1e3) return String(n);
+    if (n < 1e4) return (n / 1e3).toFixed(1).replace(/\.0$/, "") + "k";
+    return Math.round(n / 1e3) + "k";
+  }
+  async function copyText(text) {
+    if (navigator.clipboard?.writeText) {
+      const ok2 = await Promise.race([
+        navigator.clipboard.writeText(text).then(
+          () => true,
+          () => false
+        ),
+        new Promise((r) => setTimeout(() => r(false), 800))
+      ]);
+      if (ok2) return true;
+    }
+    const prev = document.activeElement;
+    const ta = document.createElement("textarea");
+    ta.value = text;
+    ta.setAttribute("readonly", "");
+    ta.style.cssText = "position:fixed;left:-9999px;top:0;opacity:0;";
+    getRoot().appendChild(ta);
+    ta.select();
+    let ok = false;
+    try {
+      ok = document.execCommand("copy");
+    } catch {
+      ok = false;
+    }
+    ta.remove();
+    prev?.focus?.({ preventScroll: true });
+    return ok;
+  }
+  const svg = (d) => `<svg viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="${d}"/></svg>`;
+  const ICON = {
+    search: svg(
+      "M10.68 11.74a6 6 0 0 1-7.922-8.982 6 6 0 0 1 8.982 7.922l3.04 3.04a.749.749 0 0 1-.326 1.275.749.749 0 0 1-.734-.215ZM11.5 7a4.499 4.499 0 1 0-8.997 0A4.499 4.499 0 0 0 11.5 7Z"
+    ),
+    plus: svg(
+      "M7.75 2a.75.75 0 0 1 .75.75V7h4.25a.75.75 0 0 1 0 1.5H8.5v4.25a.75.75 0 0 1-1.5 0V8.5H2.75a.75.75 0 0 1 0-1.5H7V2.75A.75.75 0 0 1 7.75 2Z"
+    ),
+    x: svg(
+      "M3.72 3.72a.75.75 0 0 1 1.06 0L8 6.94l3.22-3.22a.75.75 0 1 1 1.06 1.06L9.06 8l3.22 3.22a.75.75 0 1 1-1.06 1.06L8 9.06l-3.22 3.22a.75.75 0 0 1-1.06-1.06L6.94 8 3.72 4.78a.75.75 0 0 1 0-1.06Z"
+    ),
+    copy: svg(
+      "M0 6.75C0 5.784.784 5 1.75 5h1.5a.75.75 0 0 1 0 1.5h-1.5a.25.25 0 0 0-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 0 0 .25-.25v-1.5a.75.75 0 0 1 1.5 0v1.5A1.75 1.75 0 0 1 9.25 16h-7.5A1.75 1.75 0 0 1 0 14.25Z M5 1.75C5 .784 5.784 0 6.75 0h7.5C15.216 0 16 .784 16 1.75v7.5A1.75 1.75 0 0 1 14.25 11h-7.5A1.75 1.75 0 0 1 5 9.25Zm1.75-.25a.25.25 0 0 0-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 0 0 .25-.25v-7.5a.25.25 0 0 0-.25-.25Z"
+    ),
+    kebab: svg(
+      "M8 9a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3ZM1.5 9a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3Zm13 0a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3Z"
+    ),
+    info: svg(
+      "M0 8a8 8 0 1 1 16 0A8 8 0 0 1 0 8Zm8-6.5a6.5 6.5 0 1 0 0 13 6.5 6.5 0 0 0 0-13ZM6.5 7.75A.75.75 0 0 1 7.25 7h1a.75.75 0 0 1 .75.75v2.75h.25a.75.75 0 0 1 0 1.5h-2a.75.75 0 0 1 0-1.5h.25v-2h-.25a.75.75 0 0 1-.75-.75ZM8 6a1 1 0 1 1 0-2 1 1 0 0 1 0 2Z"
+    ),
+    pin: svg("M8 16s6-5.686 6-10A6 6 0 0 0 2 6c0 4.314 6 10 6 10Zm0-7a3 3 0 1 1 0-6 3 3 0 0 1 0 6Z"),
+    circle: svg("M8 0a8 8 0 1 1 0 16A8 8 0 0 1 8 0ZM1.5 8a6.5 6.5 0 1 0 13 0 6.5 6.5 0 0 0-13 0Z"),
+    star: svg(
+      "M8 .25a.75.75 0 0 1 .673.418l1.882 3.815 4.21.612a.75.75 0 0 1 .416 1.279l-3.046 2.97.719 4.192a.751.751 0 0 1-1.088.791L8 12.347l-3.766 1.98a.75.75 0 0 1-1.088-.79l.72-4.194L.818 6.374a.75.75 0 0 1 .416-1.28l4.21-.611L7.327.668A.75.75 0 0 1 8 .25Z"
+    ),
+    fork: svg(
+      "M5 5.372v.878c0 .414.336.75.75.75h4.5a.75.75 0 0 0 .75-.75v-.878a2.25 2.25 0 1 1 1.5 0v.878a2.25 2.25 0 0 1-2.25 2.25h-1.5v2.128a2.251 2.251 0 1 1-1.5 0V8.5h-1.5A2.25 2.25 0 0 1 3.5 6.25v-.878a2.25 2.25 0 1 1 1.5 0ZM5 3.25a.75.75 0 1 0-1.5 0 .75.75 0 0 0 1.5 0Zm6.75.75a.75.75 0 1 0 0-1.5.75.75 0 0 0 0 1.5Zm-3 8.75a.75.75 0 1 0-1.5 0 .75.75 0 0 0 1.5 0Z"
+    ),
+    chevron: svg(
+      "M12.78 5.22a.749.749 0 0 1 0 1.06l-4.25 4.25a.749.749 0 0 1-1.06 0L3.22 6.28a.749.749 0 1 1 1.06-1.06L8 8.939l3.72-3.719a.749.749 0 0 1 1.06 0Z"
+    )
+  };
+  const stack = [];
+  const idleQueue = [];
+  let baseClose = null;
+  let listening = false;
+  function ensureListener() {
+    if (listening) return;
+    listening = true;
+    document.addEventListener("keydown", onKeydown);
+  }
+  function onKeydown(e) {
+    if (e.key !== "Escape" || e.isComposing) return;
+    const top = stack[stack.length - 1];
+    if (top) {
+      e.preventDefault();
+      closeLayer(top);
+      return;
+    }
+    if (!baseClose) return;
+    const t = e.target instanceof HTMLElement ? e.target : null;
+    const inOwnUi = !!t?.closest("#ghtk-root");
+    const editable = !!t && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName));
+    if (editable && !inOwnUi) return;
+    baseClose();
+  }
+  function closeLayer(layer) {
+    const i = stack.indexOf(layer);
+    if (i < 0) return;
+    stack.splice(i, 1);
+    try {
+      layer.close();
+    } finally {
+      flushIdle();
+    }
+  }
+  function pushLayer(kind, close) {
+    ensureListener();
+    const layer = { kind, close };
+    stack.push(layer);
+    return () => {
+      const i = stack.indexOf(layer);
+      if (i < 0) return;
+      stack.splice(i, 1);
+      flushIdle();
+    };
+  }
+  function setBaseLayer(close) {
+    ensureListener();
+    baseClose = close;
+  }
+  function hasModal() {
+    return stack.some((l) => l.kind === "modal");
+  }
+  function whenIdle(fn) {
+    if (!hasModal()) {
+      fn();
+      return;
+    }
+    if (!idleQueue.includes(fn)) idleQueue.push(fn);
+  }
+  function flushIdle() {
+    if (hasModal() || !idleQueue.length) return;
+    const fns = idleQueue.splice(0);
+    setTimeout(() => fns.forEach((f) => f()), 0);
+  }
+  function closeTransientLayers() {
+    for (const l of stack.slice().reverse()) {
+      if (l.kind === "transient") closeLayer(l);
+    }
+  }
+  function closeAllLayers() {
+    for (const l of stack.slice().reverse()) closeLayer(l);
+  }
   const FAB_ICON = `<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M15 2.75a.75.75 0 0 1-.75.75h-4a.75.75 0 0 1 0-1.5h4a.75.75 0 0 1 .75.75Zm-8.5.75v1.25a.75.75 0 0 0 1.5 0v-4a.75.75 0 0 0-1.5 0V2H1.75a.75.75 0 0 0 0 1.5H6.5Zm1.25 5.5a.75.75 0 0 0 0-1.5h-6a.75.75 0 0 0 0 1.5h6ZM15 8a.75.75 0 0 1-.75.75H11.5V10a.75.75 0 1 1-1.5 0V6a.75.75 0 0 1 1.5 0v1.25h2.75A.75.75 0 0 1 15 8Zm-9 5.25v-2a.75.75 0 0 0-1.5 0v1.25H1.75a.75.75 0 1 0 0 1.5H4.5v1.25a.75.75 0 0 0 1.5 0v-2Zm9 2v-2.25a.75.75 0 0 0-1.5 0V15h-4a.75.75 0 0 0 0 1.5h4a.75.75 0 0 0 .75-.75v-1.5Z"/></svg>`;
-  const CLOUD_ICON = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z"/></svg>`;
+  const CLOUD_ICON = `<svg class="ghtk-stroke" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z"/></svg>`;
   const FAB_POS_KEY = "fab-position";
+  const PANEL_POS_KEY = "panel-position";
   const FAB_SIZE = 48;
-  const FAB_MARGIN = 8;
+  const PANEL_W = 400;
+  const PANEL_H = 560;
+  const EDGE = 8;
   const DRAG_THRESHOLD = 4;
+  function isPoint(v) {
+    return !!v && typeof v.left === "number" && typeof v.top === "number";
+  }
   class UIManager {
     panel = null;
     fab = null;
     fabPos = null;
     suppressClick = false;
+    resizeBound = false;
+    toastEl = null;
+    toastTimer = null;
     /** 由主程序注入：点击悬浮球时切换面板 */
     onFabToggle = () => {
     };
     /** 由主程序注入：点击标题栏云图标时打开云端备份面板 */
     onCloudClick = () => {
     };
+    // ---------- 悬浮球 ----------
     createFab() {
-      if (this.fab && document.body.contains(this.fab)) return;
+      if (this.fab && this.fab.isConnected) return;
       injectGlobalStyles();
       document.querySelectorAll(".ghtk-fab").forEach((el) => el.remove());
-      this.fab = document.createElement("button");
-      this.fab.className = "ghtk-fab";
-      this.fab.type = "button";
-      this.fab.title = "GitHub Toolkit（可拖动）";
-      this.fab.setAttribute("aria-label", "GitHub Toolkit");
-      this.fab.innerHTML = FAB_ICON;
-      this.fab.addEventListener(
+      const fab = document.createElement("button");
+      fab.className = "ghtk-fab";
+      fab.type = "button";
+      fab.title = "GitHub Toolkit（可拖动）";
+      fab.setAttribute("aria-label", "GitHub Toolkit");
+      fab.setAttribute("aria-expanded", this.panel ? "true" : "false");
+      fab.innerHTML = FAB_ICON;
+      this.fab = fab;
+      fab.addEventListener(
         "click",
         (e) => {
           e.preventDefault();
@@ -1590,196 +1385,195 @@
         },
         true
       );
-      getRoot().appendChild(this.fab);
-      this.restoreFabPosition();
-      this.enableFabDrag();
-      window.addEventListener("resize", () => this.clampFabPosition(), { passive: true });
-    }
-    /** 读取并应用上次拖拽的位置 */
-    restoreFabPosition() {
+      getRoot().appendChild(fab);
       const saved = GM_getValue(FAB_POS_KEY, null);
-      if (saved && typeof saved.left === "number" && typeof saved.top === "number") {
-        this.applyFabPosition(saved);
+      if (isPoint(saved)) this.applyFabPos(saved);
+      this.enableFabDrag(fab);
+      if (!this.resizeBound) {
+        this.resizeBound = true;
+        window.addEventListener(
+          "resize",
+          () => {
+            if (this.fabPos) this.applyFabPos(this.fabPos);
+            if (this.panel) {
+              const r = this.panel.getBoundingClientRect();
+              this.setPanelPos(this.clampPanelPos({ left: r.left, top: r.top }));
+            }
+          },
+          { passive: true }
+        );
       }
     }
-    applyFabPosition(pos) {
+    applyFabPos(pos) {
       if (!this.fab) return;
-      const clamped = this.clamp(pos);
-      this.fabPos = clamped;
-      this.fab.style.left = clamped.left + "px";
-      this.fab.style.top = clamped.top + "px";
+      const maxLeft = Math.max(EDGE, window.innerWidth - FAB_SIZE - EDGE);
+      const maxTop = Math.max(EDGE, window.innerHeight - FAB_SIZE - EDGE);
+      const p = {
+        left: Math.min(Math.max(EDGE, pos.left), maxLeft),
+        top: Math.min(Math.max(EDGE, pos.top), maxTop)
+      };
+      this.fabPos = p;
+      this.fab.style.left = p.left + "px";
+      this.fab.style.top = p.top + "px";
       this.fab.style.right = "auto";
       this.fab.style.bottom = "auto";
     }
-    clamp(pos) {
-      const maxLeft = Math.max(FAB_MARGIN, window.innerWidth - FAB_SIZE - FAB_MARGIN);
-      const maxTop = Math.max(FAB_MARGIN, window.innerHeight - FAB_SIZE - FAB_MARGIN);
-      return {
-        left: Math.min(Math.max(FAB_MARGIN, pos.left), maxLeft),
-        top: Math.min(Math.max(FAB_MARGIN, pos.top), maxTop)
-      };
-    }
-    /** 视口变化后把悬浮球拉回可见区域 */
-    clampFabPosition() {
-      if (!this.fabPos || !this.fab) return;
-      const next = this.clamp(this.fabPos);
-      if (next.left !== this.fabPos.left || next.top !== this.fabPos.top) {
-        this.applyFabPosition(next);
-      }
-    }
-    enableFabDrag() {
-      const fab = this.fab;
-      if (!fab) return;
+    enableFabDrag(fab) {
       fab.addEventListener("pointerdown", (e) => {
         if (e.button !== 0) return;
         const rect = fab.getBoundingClientRect();
-        const start = {
-          x: e.clientX,
-          y: e.clientY,
-          left: rect.left,
-          top: rect.top
-        };
-        let dragging = false;
-        try {
-          fab.setPointerCapture(e.pointerId);
-        } catch {
-        }
+        const sx = e.clientX;
+        const sy = e.clientY;
+        let moved = false;
         const onMove = (ev) => {
-          const dx = ev.clientX - start.x;
-          const dy = ev.clientY - start.y;
-          if (!dragging && Math.hypot(dx, dy) < DRAG_THRESHOLD) return;
-          dragging = true;
-          fab.classList.add("dragging");
-          this.applyFabPosition({ left: start.left + dx, top: start.top + dy });
+          const dx = ev.clientX - sx;
+          const dy = ev.clientY - sy;
+          if (!moved && Math.hypot(dx, dy) < DRAG_THRESHOLD) return;
+          moved = true;
+          this.applyFabPos({ left: rect.left + dx, top: rect.top + dy });
         };
-        const onUp = (ev) => {
-          fab.removeEventListener("pointermove", onMove);
-          fab.removeEventListener("pointerup", onUp);
-          fab.removeEventListener("pointercancel", onUp);
-          fab.classList.remove("dragging");
-          try {
-            fab.releasePointerCapture(ev.pointerId);
-          } catch {
-          }
-          if (dragging) {
-            this.suppressClick = true;
-            if (this.fabPos) {
-              GM_setValue(FAB_POS_KEY, this.fabPos);
-              if (this.panel) this.placePanelNearFab();
-            }
-          }
+        const onUp = () => {
+          document.removeEventListener("pointermove", onMove);
+          document.removeEventListener("pointerup", onUp);
+          document.removeEventListener("pointercancel", onUp);
+          if (!moved) return;
+          this.suppressClick = true;
+          setTimeout(() => this.suppressClick = false, 0);
+          if (this.fabPos) GM_setValue(FAB_POS_KEY, this.fabPos);
+          GM_deleteValue(PANEL_POS_KEY);
+          if (this.panel) this.positionPanel();
         };
-        fab.addEventListener("pointermove", onMove);
-        fab.addEventListener("pointerup", onUp);
-        fab.addEventListener("pointercancel", onUp);
+        document.addEventListener("pointermove", onMove);
+        document.addEventListener("pointerup", onUp);
+        document.addEventListener("pointercancel", onUp);
       });
     }
-    /** 面板贴着悬浮球展开，空间不足时自动翻到另一侧 */
-    placePanelNearFab() {
-      if (!this.panel || !this.fab) return;
-      const rect = this.fab.getBoundingClientRect();
-      const pw = this.panel.offsetWidth || 400;
-      const ph = this.panel.offsetHeight || 560;
-      const gap = 12;
-      const margin = 8;
-      let left = rect.left;
-      if (left + pw > window.innerWidth - margin) left = rect.right - pw;
-      left = Math.min(Math.max(margin, left), Math.max(margin, window.innerWidth - pw - margin));
-      let top = rect.top - ph - gap;
-      if (top < margin) top = rect.bottom + gap;
-      if (top + ph > window.innerHeight - margin) {
-        top = Math.max(margin, window.innerHeight - ph - margin);
-      }
-      this.panel.style.left = left + "px";
-      this.panel.style.top = top + "px";
+    // ---------- 面板 ----------
+    showPanel(html, title = "GitHub Toolkit") {
+      injectGlobalStyles();
+      this.removePanel();
+      const panel = document.createElement("div");
+      panel.className = "ghtk-panel";
+      panel.setAttribute("role", "dialog");
+      panel.setAttribute("aria-label", title);
+      panel.innerHTML = `
+      <div class="ghtk-panel-head">
+        <span class="ghtk-panel-title">${escapeHtml(title)}</span>
+        <span class="ghtk-head-actions">
+          <button class="ghtk-icon-btn ghtk-cloud-btn" type="button" title="云端备份" aria-label="云端备份">${CLOUD_ICON}</button>
+          <button class="ghtk-icon-btn ghtk-close-btn" type="button" title="关闭（Esc）" aria-label="关闭">${ICON.x}</button>
+        </span>
+      </div>
+      <div class="ghtk-panel-body">${html}</div>
+    `;
+      getRoot().appendChild(panel);
+      this.panel = panel;
+      this.positionPanel();
+      panel.querySelector(".ghtk-close-btn")?.addEventListener("click", () => this.hidePanel());
+      panel.querySelector(".ghtk-cloud-btn")?.addEventListener("click", () => this.onCloudClick());
+      this.enablePanelDrag(panel);
+      setBaseLayer(() => this.hidePanel());
+      this.fab?.setAttribute("aria-expanded", "true");
+    }
+    /** 只拆掉面板 DOM（重建用）：关掉气泡/菜单等临时层，保留打开中的对话框 */
+    removePanel() {
+      closeTransientLayers();
+      this.panel?.remove();
+      this.panel = null;
+    }
+    /** 关闭面板：连同所有弹层一起关 */
+    hidePanel() {
+      if (!this.panel) return;
+      const hadFocus = this.panel.contains(document.activeElement);
+      closeAllLayers();
+      this.panel?.remove();
+      this.panel = null;
+      setBaseLayer(null);
+      this.fab?.setAttribute("aria-expanded", "false");
+      if (hadFocus) this.fab?.focus({ preventScroll: true });
+    }
+    /** 有拖动记录用记录的位置，否则贴着悬浮球（优先上方，放不下翻到下方） */
+    positionPanel() {
+      if (!this.panel) return;
+      const saved = GM_getValue(PANEL_POS_KEY, null);
+      this.setPanelPos(this.clampPanelPos(isPoint(saved) ? saved : this.nearFab()));
+    }
+    nearFab() {
+      const w = this.panel?.offsetWidth || PANEL_W;
+      const h = this.panel?.offsetHeight || PANEL_H;
+      const fab = this.fab?.getBoundingClientRect();
+      if (!fab) return { left: window.innerWidth - w - 20, top: window.innerHeight - h - 84 };
+      let left = fab.right - w;
+      if (left < EDGE) left = fab.left;
+      let top = fab.top - h - 12;
+      if (top < EDGE) top = fab.bottom + 12;
+      return { left, top };
+    }
+    clampPanelPos(p) {
+      const w = this.panel?.offsetWidth || PANEL_W;
+      const h = this.panel?.offsetHeight || PANEL_H;
+      return {
+        left: Math.min(Math.max(EDGE, p.left), Math.max(EDGE, window.innerWidth - w - EDGE)),
+        top: Math.min(Math.max(EDGE, p.top), Math.max(EDGE, window.innerHeight - h - EDGE))
+      };
+    }
+    setPanelPos(p) {
+      if (!this.panel) return;
+      this.panel.style.left = Math.round(p.left) + "px";
+      this.panel.style.top = Math.round(p.top) + "px";
       this.panel.style.right = "auto";
       this.panel.style.bottom = "auto";
     }
-    showPanel(contentHtml, title = "GitHub Toolkit") {
-      injectGlobalStyles();
-      this.hidePanel();
-      this.panel = document.createElement("div");
-      this.panel.className = "ghtk-panel";
-      this.panel.innerHTML = `
-      <header>
-        <span class="title">${title}</span>
-        <span class="head-actions">
-          <button class="cloud-btn" type="button" title="云端备份" aria-label="云端备份">${CLOUD_ICON}</button>
-          <button class="close-btn" type="button" title="关闭">✕</button>
-        </span>
-      </header>
-      <div class="body">${contentHtml || ""}</div>
-    `;
-      this.panel.style.right = "20px";
-      this.panel.style.bottom = "84px";
-      this.panel.style.left = "auto";
-      this.panel.style.top = "auto";
-      getRoot().appendChild(this.panel);
-      this.placePanelNearFab();
-      this.panel.querySelector(".close-btn").addEventListener("click", (e) => {
-        e.stopPropagation();
-        this.hidePanel();
-      });
-      this.onCloudClick = this.onCloudClick || (() => {
-      });
-      this.panel.querySelector(".cloud-btn").addEventListener("click", (e) => {
-        e.stopPropagation();
-        this.onCloudClick();
-      });
-      this.enableDrag(this.panel.querySelector("header"));
-      document.addEventListener("keydown", this.onEsc);
-    }
-    onEsc = (e) => {
-      if (e.key === "Escape") this.hidePanel();
-    };
-    hidePanel() {
-      if (!this.panel) return;
-      this.panel.remove();
-      this.panel = null;
-      document.removeEventListener("keydown", this.onEsc);
-    }
-    enableDrag(handle) {
-      if (!handle || !this.panel) return;
-      handle.addEventListener("mousedown", (ev) => {
-        const e = ev;
-        if (e.button !== 0 || !this.panel) return;
-        const rect = this.panel.getBoundingClientRect();
-        const dragState = {
-          startX: e.clientX,
-          startY: e.clientY,
-          origLeft: rect.left,
-          origTop: rect.top
-        };
-        this.panel.style.right = "auto";
-        this.panel.style.bottom = "auto";
-        this.panel.style.left = rect.left + "px";
-        this.panel.style.top = rect.top + "px";
-        const onMove = (ev2) => {
-          if (!this.panel) return;
-          const dx = ev2.clientX - dragState.startX;
-          const dy = ev2.clientY - dragState.startY;
-          this.panel.style.left = Math.max(8, dragState.origLeft + dx) + "px";
-          this.panel.style.top = Math.max(8, dragState.origTop + dy) + "px";
+    /** 拖动标题栏移动面板，松手后记住位置 */
+    enablePanelDrag(panel) {
+      const head = panel.querySelector(".ghtk-panel-head");
+      if (!head) return;
+      head.addEventListener("pointerdown", (e) => {
+        if (e.button !== 0) return;
+        if (e.target.closest("button")) return;
+        if (window.matchMedia("(max-width: 480px)").matches) return;
+        e.preventDefault();
+        const rect = panel.getBoundingClientRect();
+        const sx = e.clientX;
+        const sy = e.clientY;
+        let moved = false;
+        const onMove = (ev) => {
+          const dx = ev.clientX - sx;
+          const dy = ev.clientY - sy;
+          if (!moved && Math.hypot(dx, dy) < DRAG_THRESHOLD) return;
+          moved = true;
+          this.setPanelPos(this.clampPanelPos({ left: rect.left + dx, top: rect.top + dy }));
         };
         const onUp = () => {
-          document.removeEventListener("mousemove", onMove);
-          document.removeEventListener("mouseup", onUp);
+          document.removeEventListener("pointermove", onMove);
+          document.removeEventListener("pointerup", onUp);
+          document.removeEventListener("pointercancel", onUp);
+          if (!moved || !this.panel) return;
+          const r = this.panel.getBoundingClientRect();
+          GM_setValue(PANEL_POS_KEY, { left: Math.round(r.left), top: Math.round(r.top) });
         };
-        document.addEventListener("mousemove", onMove);
-        document.addEventListener("mouseup", onUp);
+        document.addEventListener("pointermove", onMove);
+        document.addEventListener("pointerup", onUp);
+        document.addEventListener("pointercancel", onUp);
       });
     }
+    // ---------- 提示条（单例：新提示替换旧提示） ----------
     toast(msg, duration = 2200) {
       injectGlobalStyles();
-      const t = document.createElement("div");
-      t.className = "ghtk-toast";
-      t.textContent = msg;
-      getRoot().appendChild(t);
-      requestAnimationFrame(() => t.classList.add("show"));
-      setTimeout(() => {
-        t.classList.remove("show");
-        setTimeout(() => t.remove(), 280);
-      }, duration);
+      let t = this.toastEl;
+      if (!t || !t.isConnected) {
+        t = document.createElement("div");
+        t.className = "ghtk-toast";
+        t.setAttribute("role", "status");
+        t.setAttribute("aria-live", "polite");
+        getRoot().appendChild(t);
+        this.toastEl = t;
+      }
+      const el = t;
+      el.textContent = msg;
+      if (this.toastTimer) clearTimeout(this.toastTimer);
+      requestAnimationFrame(() => el.classList.add("show"));
+      this.toastTimer = setTimeout(() => el.classList.remove("show"), duration);
     }
   }
   class PageRouter {
@@ -2043,6 +1837,8 @@
       return false;
     }
   }
+  let active = null;
+  let seq = 0;
   const Modal = {
     show({
       title = "提示",
@@ -2055,27 +1851,33 @@
       danger = false
     } = {}) {
       return new Promise((resolve) => {
-        document.querySelectorAll(".ghtk-modal-mask").forEach((el) => el.remove());
+        active?.(null);
+        const prevFocus = document.activeElement;
+        const titleId = `ghtk-modal-title-${++seq}`;
         const mask = document.createElement("div");
         mask.className = "ghtk-modal-mask";
         mask.innerHTML = `
-        <div class="ghtk-modal" role="dialog" aria-modal="true">
+        <div class="ghtk-modal" role="dialog" aria-modal="true" aria-labelledby="${titleId}">
           <div class="ghtk-modal-header">
-            <span class="ghtk-modal-title">${title}</span>
-            <button class="ghtk-modal-close" type="button">✕</button>
+            <span class="ghtk-modal-title" id="${titleId}">${escapeHtml(title)}</span>
+            <button class="ghtk-icon-btn ghtk-modal-close" type="button" title="关闭" aria-label="关闭">${ICON.x}</button>
           </div>
           <div class="ghtk-modal-body">
             ${content ? `<div class="ghtk-modal-content">${content}</div>` : ""}
-            ${showInput ? `<input class="ghtk-modal-input" type="text" value="${inputValue.replace(/"/g, "&quot;")}" placeholder="${placeholder}" />` : ""}
+            ${showInput ? `<input class="ghtk-modal-input" type="text" value="${escapeHtml(inputValue)}" placeholder="${escapeHtml(
+        placeholder
+      )}" aria-label="${escapeHtml(placeholder || title)}" autocomplete="off" spellcheck="false" />` : ""}
           </div>
           <div class="ghtk-modal-footer">
-            <button class="ghtk-btn" data-action="cancel" type="button">${cancelText}</button>
-            <button class="ghtk-btn ${danger ? "danger-solid" : "primary"}" data-action="confirm" type="button">${confirmText}</button>
+            <button class="ghtk-btn" data-action="cancel" type="button">${escapeHtml(cancelText)}</button>
+            <button class="ghtk-btn ${danger ? "danger-solid" : "primary"}" data-action="confirm" type="button">${escapeHtml(
+        confirmText
+      )}</button>
           </div>
         </div>
       `;
-        getRoot().appendChild(mask);
         injectGlobalStyles();
+        getRoot().appendChild(mask);
         const setBox = (r) => {
           mask.style.setProperty("left", r.left + "px", "important");
           mask.style.setProperty("top", r.top + "px", "important");
@@ -2087,25 +1889,27 @@
         const panel = document.querySelector(".ghtk-panel");
         if (panel) {
           mask.classList.add("in-panel");
-          mask.style.setProperty("position", "fixed", "important");
           mask.style.setProperty("border-radius", "14px", "important");
           setBox(panel.getBoundingClientRect());
         }
         const input = mask.querySelector(".ghtk-modal-input");
-        if (input) {
-          setTimeout(() => {
-            input.focus({ preventScroll: true });
-            input.select();
-          }, 50);
-        }
+        let done = false;
         let rafId = 0;
         let lastKey = "";
-        const close = (result) => {
+        let release = () => {
+        };
+        const finish = (result) => {
+          if (done) return;
+          done = true;
+          if (active === finish) active = null;
           if (rafId) cancelAnimationFrame(rafId);
+          release();
           mask.remove();
-          document.removeEventListener("keydown", onKey);
+          if (prevFocus && prevFocus.isConnected) prevFocus.focus({ preventScroll: true });
           resolve(result);
         };
+        active = finish;
+        release = pushLayer("modal", () => finish(null));
         const syncToPanel = () => {
           if (!mask.isConnected) return;
           const p = document.querySelector(".ghtk-panel");
@@ -2120,19 +1924,48 @@
           rafId = requestAnimationFrame(syncToPanel);
         };
         if (mask.classList.contains("in-panel")) rafId = requestAnimationFrame(syncToPanel);
-        mask.querySelector(".ghtk-modal-close").addEventListener("click", () => close(null));
-        mask.querySelector('[data-action="cancel"]').addEventListener("click", () => close(null));
-        mask.querySelector('[data-action="confirm"]').addEventListener("click", () => {
-          close(showInput ? input ? input.value.trim() : "" : true);
+        const confirmValue = () => showInput ? input ? input.value.trim() : "" : true;
+        mask.querySelector(".ghtk-modal-close")?.addEventListener("click", () => finish(null));
+        mask.querySelector('[data-action="cancel"]')?.addEventListener("click", () => finish(null));
+        mask.querySelector('[data-action="confirm"]')?.addEventListener("click", () => finish(confirmValue()));
+        let downOnMask = false;
+        mask.addEventListener("pointerdown", (e) => {
+          downOnMask = e.target === mask;
         });
         mask.addEventListener("click", (e) => {
-          if (e.target === mask) close(null);
+          if (e.target === mask && downOnMask) finish(null);
         });
-        const onKey = (e) => {
-          if (e.key === "Escape") close(null);
-          if (e.key === "Enter" && showInput) close(input ? input.value.trim() : "");
-        };
-        document.addEventListener("keydown", onKey);
+        mask.addEventListener("keydown", (e) => {
+          if (e.key === "Enter" && e.target === input && !e.isComposing) {
+            e.preventDefault();
+            finish(confirmValue());
+            return;
+          }
+          if (e.key !== "Tab") return;
+          const list = Array.from(mask.querySelectorAll("button, input")).filter(
+            (el) => !el.hasAttribute("disabled")
+          );
+          if (!list.length) return;
+          const first = list[0];
+          const last = list[list.length - 1];
+          if (e.shiftKey && document.activeElement === first) {
+            e.preventDefault();
+            last.focus();
+          } else if (!e.shiftKey && document.activeElement === last) {
+            e.preventDefault();
+            first.focus();
+          }
+        });
+        setTimeout(() => {
+          if (done) return;
+          if (input) {
+            input.focus({ preventScroll: true });
+            input.select();
+            return;
+          }
+          const target = mask.querySelector(danger ? '[data-action="cancel"]' : '[data-action="confirm"]');
+          target?.focus({ preventScroll: true });
+        }, 30);
       });
     }
   };
@@ -2518,135 +2351,228 @@
       }
     });
   }
-  const POPOVER_CLASS = "ghtk-popover";
-  function escapeHtml$2(s) {
-    return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
-  }
-  function compactNum$1(n) {
-    if (n < 1e3) return String(n);
-    if (n < 1e4) return (n / 1e3).toFixed(1).replace(/\.0$/, "") + "k";
-    return Math.round(n / 1e3) + "k";
+  let current$1 = null;
+  function isPopoverOpen() {
+    return !!current$1;
   }
   function closePopover() {
-    document.querySelectorAll("." + POPOVER_CLASS).forEach((el) => el.remove());
-    document.removeEventListener("keydown", onDocKey);
-    document.removeEventListener("mousedown", onDocDown, true);
+    if (!current$1) return;
+    const p = current$1;
+    current$1 = null;
+    const hadFocus = p.el.contains(document.activeElement);
+    p.cleanup();
+    p.release();
+    p.el.remove();
+    p.anchor.setAttribute("aria-expanded", "false");
+    if (hadFocus && p.anchor.isConnected) p.anchor.focus({ preventScroll: true });
+    p.onClose?.();
   }
-  const onDocKey = (e) => {
-    if (e.key === "Escape") closePopover();
-  };
-  const onDocDown = (e) => {
-    const t = e.target;
-    if (!t) return;
-    if (t.closest("." + POPOVER_CLASS)) return;
-    if (t.closest("[data-ghtk-popover-trigger]")) return;
-    closePopover();
-  };
-  function showAboutPopover({ about, anchor, pageType, extraMeta = [], actions = [] }) {
+  function showAboutPopover({ about, anchor, extraMeta = [], onClose }) {
     injectGlobalStyles();
-    const already = document.querySelector("." + POPOVER_CLASS);
-    const sameAnchor = already?.getAttribute("data-anchor") === about.full_name;
+    const key = about.full_name.toLowerCase();
+    if (current$1 && current$1.key === key) {
+      closePopover();
+      return;
+    }
     closePopover();
-    if (already && sameAnchor) return;
-    const desc = about.description?.trim() || "暂无简介";
-    const metaRows = [
-      ["页面", pageType || "—"],
+    const rows = [
       ["主语言", about.language || "—"],
-      ["Star", compactNum$1(about.stars)],
-      ["Fork", compactNum$1(about.forks)],
-      ["License", about.license || "—"],
-      ["Open Issues", String(about.openIssues)],
+      ["Star", compactNum(about.stars)],
+      ["Fork", compactNum(about.forks)],
+      ["许可证", about.license || "—"],
+      ["未关闭 Issue/PR", String(about.openIssues)],
       ...extraMeta
     ];
-    const topics = about.topics.length ? `<div class="ghtk-pop-sec">Topics · ${about.topics.length}</div>
-       <div class="ghtk-pop-topics">${about.topics.map((t) => `<span class="ghtk-topic">${escapeHtml$2(t)}</span>`).join("")}</div>` : "";
-    const home = about.homepage ? `<div class="ghtk-pop-sec">主页</div>
-       <div class="ghtk-pop-home"><a href="${escapeHtml$2(about.homepage)}" target="_blank" rel="noreferrer">${escapeHtml$2(
-    about.homepage.replace(/^https?:\/\//, "")
-  )}</a></div>` : "";
-    const footHtml = actions.length ? `<div class="ghtk-pop-foot">${actions.map((a, i) => {
-    if (a.href) {
-      return `<a class="ghtk-btn ${a.primary ? "primary" : ""}" data-act="${i}" href="${escapeHtml$2(
-        a.href
-      )}" target="_blank" rel="noreferrer">${escapeHtml$2(a.label)}</a>`;
-    }
-    return `<button class="ghtk-btn ${a.primary ? "primary" : ""}" data-act="${i}" type="button">${escapeHtml$2(
-      a.label
-    )}</button>`;
-  }).join("")}</div>` : "";
+    const desc = about.description?.trim() || "暂无简介";
+    const topics = about.topics.length ? `<div class="ghtk-pop-group">
+         <div class="ghtk-pop-sec">主题 · ${about.topics.length}</div>
+         <div class="ghtk-pop-topics">${about.topics.map((t) => `<span class="ghtk-topic">${escapeHtml(t)}</span>`).join("")}</div>
+       </div>` : "";
+    const homeRaw = (about.homepage || "").trim();
+    const homeHref = homeRaw ? /^https?:\/\//i.test(homeRaw) ? homeRaw : "https://" + homeRaw : "";
+    const home = homeHref && /^https?:\/\/[^\s"'<>]+$/i.test(homeHref) ? `<div class="ghtk-pop-group">
+           <div class="ghtk-pop-sec">主页</div>
+           <a class="ghtk-pop-home" href="${escapeHtml(homeHref)}" target="_blank" rel="noreferrer">${escapeHtml(
+    homeHref.replace(/^https?:\/\//i, "")
+  )}</a>
+         </div>` : "";
     const el = document.createElement("div");
-    el.className = POPOVER_CLASS;
-    el.setAttribute("data-anchor", about.full_name);
+    el.className = "ghtk-popover";
+    el.setAttribute("role", "dialog");
+    el.setAttribute("aria-label", about.full_name);
     el.innerHTML = `
-    <div class="ghtk-pop-arrow"></div>
-    <div class="ghtk-pop-head">
-      <div class="ghtk-pop-title" title="${escapeHtml$2(about.full_name)}">${escapeHtml$2(about.full_name)}</div>
-      <button class="ghtk-icon-btn ghtk-pop-close" type="button" title="关闭">✕</button>
-    </div>
-    <div class="ghtk-pop-body">
-      <div class="ghtk-pop-desc">${escapeHtml$2(desc)}</div>
-      <div class="ghtk-pop-grid">
-        ${metaRows.map(
-    ([k, v]) => `
-          <div class="ghtk-pop-cell">
-            <div class="ghtk-pop-k">${escapeHtml$2(k)}</div>
-            <div class="ghtk-pop-v" title="${escapeHtml$2(v)}">${escapeHtml$2(v)}</div>
-          </div>`
-  ).join("")}
+    <div class="ghtk-pop-arrow" aria-hidden="true"></div>
+    <div class="ghtk-pop-inner">
+      <div class="ghtk-pop-head">
+        <div class="ghtk-pop-title" title="${escapeHtml(about.full_name)}">${escapeHtml(about.full_name)}</div>
+        <button class="ghtk-icon-btn ghtk-pop-close" type="button" title="关闭" aria-label="关闭">${ICON.x}</button>
       </div>
-      ${topics}
-      ${home}
-      ${about.archived ? '<div class="ghtk-pop-note">该仓库已归档</div>' : ""}
+      <div class="ghtk-pop-body">
+        <div class="ghtk-pop-desc">${escapeHtml(desc)}</div>
+        <div class="ghtk-pop-grid">
+          ${rows.map(
+    ([k, v]) => `<div class="ghtk-pop-cell">
+                <div class="ghtk-pop-k">${escapeHtml(k)}</div>
+                <div class="ghtk-pop-v" title="${escapeHtml(v)}">${escapeHtml(v)}</div>
+              </div>`
+  ).join("")}
+        </div>
+        ${topics}
+        ${home}
+        ${about.archived ? '<div class="ghtk-pop-note">该仓库已归档</div>' : ""}
+      </div>
     </div>
-    ${footHtml}
   `;
     getRoot().appendChild(el);
-    const rect = anchor.getBoundingClientRect();
-    const gap = 8;
-    const margin = 8;
     const panel = document.querySelector(".ghtk-panel");
-    const panelRect = panel?.getBoundingClientRect() ?? null;
-    const maxByPanel = panelRect ? Math.max(240, panelRect.width - margin * 2) : 328;
-    const pw = Math.min(328, maxByPanel);
-    el.style.width = pw + "px";
-    const ph = el.offsetHeight || 320;
-    const bounds = panelRect ? { left: panelRect.left, top: panelRect.top, right: panelRect.right, bottom: panelRect.bottom } : { left: 0, top: 0, right: window.innerWidth, bottom: window.innerHeight };
-    let left = rect.left + rect.width / 2 - pw / 2;
-    left = Math.min(Math.max(bounds.left + margin, left), Math.max(bounds.left + margin, bounds.right - pw - margin));
-    let top = rect.bottom + gap;
-    let flipUp = false;
-    if (top + ph > bounds.bottom - margin) {
-      top = rect.top - ph - gap;
-      flipUp = true;
-      if (top < bounds.top + margin) {
-        top = Math.max(bounds.top + margin, bounds.bottom - ph - margin);
-      }
+    const b = panel ? panel.getBoundingClientRect() : new DOMRect(0, 0, window.innerWidth, window.innerHeight);
+    const margin = 8;
+    const gap = 8;
+    const pw = Math.max(240, Math.min(384, b.width - margin * 2));
+    el.style.setProperty("width", pw + "px", "important");
+    el.style.setProperty("max-height", Math.max(200, b.height - margin * 2) + "px", "important");
+    const ph = el.offsetHeight;
+    const a = anchor.getBoundingClientRect();
+    const left = Math.min(Math.max(b.left + margin, a.left + a.width / 2 - pw / 2), b.right - pw - margin);
+    let top;
+    let arrow;
+    if (a.bottom + gap + ph <= b.bottom - margin) {
+      top = a.bottom + gap;
+      arrow = "up";
+    } else if (a.top - gap - ph >= b.top + margin) {
+      top = a.top - gap - ph;
+      arrow = "down";
+    } else {
+      top = Math.max(b.top + margin, b.bottom - margin - ph);
+      arrow = null;
     }
-    el.style.left = left + "px";
-    el.style.top = top + "px";
-    const arrow = el.querySelector(".ghtk-pop-arrow");
-    if (arrow) {
-      const ax = Math.min(Math.max(12, rect.left + rect.width / 2 - left - 5), pw - 22);
-      arrow.style.left = ax + "px";
-      if (flipUp) {
-        arrow.classList.add("up");
-        arrow.style.top = "auto";
-        arrow.style.bottom = "-6px";
+    el.style.setProperty("left", left + "px", "important");
+    el.style.setProperty("top", top + "px", "important");
+    const arrowEl = el.querySelector(".ghtk-pop-arrow");
+    if (arrowEl) {
+      if (arrow) {
+        arrowEl.classList.add(arrow);
+        const ax = Math.min(Math.max(14, a.left + a.width / 2 - left - 5), pw - 24);
+        arrowEl.style.setProperty("left", ax + "px", "important");
+      } else {
+        arrowEl.remove();
       }
     }
     el.querySelector(".ghtk-pop-close")?.addEventListener("click", () => closePopover());
-    actions.forEach((a, i) => {
-      el.querySelector(`[data-act="${i}"]`)?.addEventListener("click", (e) => {
-        if (!a.onClick) return;
-        e.preventDefault();
-        a.onClick();
-        closePopover();
-      });
-    });
+    let alive = true;
+    const onDown = (e) => {
+      const t = e.target;
+      if (!t || el.contains(t) || anchor.contains(t)) return;
+      if (t.closest("[data-ghtk-popover-trigger]")) return;
+      closePopover();
+    };
     setTimeout(() => {
-      document.addEventListener("keydown", onDocKey);
-      document.addEventListener("mousedown", onDocDown, true);
+      if (alive) document.addEventListener("pointerdown", onDown, true);
     }, 0);
+    const p = {
+      el,
+      anchor,
+      key,
+      onClose,
+      release: () => {
+      },
+      cleanup: () => {
+        alive = false;
+        document.removeEventListener("pointerdown", onDown, true);
+      }
+    };
+    current$1 = p;
+    p.release = pushLayer("transient", () => closePopover());
+    anchor.setAttribute("aria-expanded", "true");
+    el.querySelector(".ghtk-pop-close")?.focus({ preventScroll: true });
+  }
+  let current = null;
+  function closeMenu(restoreFocus = true) {
+    if (!current) return;
+    const m = current;
+    current = null;
+    const hadFocus = m.el.contains(document.activeElement);
+    m.cleanup();
+    m.release();
+    m.el.remove();
+    m.anchor.setAttribute("aria-expanded", "false");
+    if (restoreFocus && hadFocus && m.anchor.isConnected) m.anchor.focus({ preventScroll: true });
+  }
+  function showMenu(anchor, items) {
+    if (current && current.anchor === anchor) {
+      closeMenu();
+      return;
+    }
+    closeMenu(false);
+    injectGlobalStyles();
+    const el = document.createElement("div");
+    el.className = "ghtk-menu";
+    el.setAttribute("role", "menu");
+    el.innerHTML = items.map(
+      (it, i) => `<button class="ghtk-menu-item${it.danger ? " danger" : ""}" type="button" role="menuitem" tabindex="-1" data-i="${i}">${escapeHtml(
+      it.label
+    )}</button>`
+    ).join("");
+    getRoot().appendChild(el);
+    const r = anchor.getBoundingClientRect();
+    const w = el.offsetWidth;
+    const h = el.offsetHeight;
+    const margin = 8;
+    const left = Math.min(Math.max(margin, r.right - w), window.innerWidth - w - margin);
+    let top = r.bottom + 4;
+    if (top + h > window.innerHeight - margin) top = Math.max(margin, r.top - h - 4);
+    el.style.setProperty("left", left + "px", "important");
+    el.style.setProperty("top", top + "px", "important");
+    const buttons = Array.from(el.querySelectorAll(".ghtk-menu-item"));
+    const focusAt = (i) => buttons[(i + buttons.length) % buttons.length]?.focus({ preventScroll: true });
+    el.addEventListener("click", (e) => {
+      const b = e.target.closest(".ghtk-menu-item");
+      if (!b) return;
+      const item = items[Number(b.dataset.i)];
+      closeMenu();
+      item?.onSelect();
+    });
+    el.addEventListener("keydown", (e) => {
+      const i = buttons.indexOf(document.activeElement);
+      if (e.key === "ArrowDown") {
+        e.preventDefault();
+        focusAt(i + 1);
+      } else if (e.key === "ArrowUp") {
+        e.preventDefault();
+        focusAt(i - 1);
+      } else if (e.key === "Home") {
+        e.preventDefault();
+        focusAt(0);
+      } else if (e.key === "End") {
+        e.preventDefault();
+        focusAt(buttons.length - 1);
+      } else if (e.key === "Tab") {
+        closeMenu(false);
+      }
+    });
+    let alive = true;
+    const onDown = (e) => {
+      const t = e.target;
+      if (!t || el.contains(t) || anchor.contains(t)) return;
+      closeMenu(false);
+    };
+    setTimeout(() => {
+      if (alive) document.addEventListener("pointerdown", onDown, true);
+    }, 0);
+    const m = {
+      el,
+      anchor,
+      release: () => {
+      },
+      cleanup: () => {
+        alive = false;
+        document.removeEventListener("pointerdown", onDown, true);
+      }
+    };
+    current = m;
+    m.release = pushLayer("transient", () => closeMenu());
+    anchor.setAttribute("aria-expanded", "true");
+    focusAt(0);
   }
   function relativeTime(iso) {
     const then = new Date(iso).getTime();
@@ -2672,20 +2598,59 @@
   }
   const BIND_STORAGE_KEY = "upstream-downstream-bindings";
   function loadBindings() {
-    return GM_getValue(BIND_STORAGE_KEY, []);
+    const v = GM_getValue(BIND_STORAGE_KEY, []);
+    return Array.isArray(v) ? v : [];
   }
   function saveBindings(list) {
     GM_setValue(BIND_STORAGE_KEY, list);
   }
-  const ICONS = {
-    search: `<svg viewBox="0 0 16 16"><path d="M10.68 11.74a6 6 0 0 1-7.922-8.982 6 6 0 0 1 8.982 7.922l3.04 3.04a.749.749 0 0 1-.326 1.275.749.749 0 0 1-.734-.215ZM11.5 7a4.499 4.499 0 1 0-8.997 0A4.499 4.499 0 0 0 11.5 7Z"/></svg>`,
-    plus: `<svg viewBox="0 0 16 16"><path d="M7.75 2a.75.75 0 0 1 .75.75V7h4.25a.75.75 0 0 1 0 1.5H8.5v4.25a.75.75 0 0 1-1.5 0V8.5H2.75a.75.75 0 0 1 0-1.5H7V2.75A.75.75 0 0 1 7.75 2Z"/></svg>`,
-    del: `<svg viewBox="0 0 16 16"><path d="M3.72 3.72a.75.75 0 0 1 1.06 0L8 6.94l3.22-3.22a.75.75 0 1 1 1.06 1.06L9.06 8l3.22 3.22a.75.75 0 1 1-1.06 1.06L8 9.06l-3.22 3.22a.75.75 0 0 1-1.06-1.06L6.94 8 3.72 4.78a.75.75 0 0 1 0-1.06Z"/></svg>`
-  };
-  function compactNum(n) {
-    if (n < 1e3) return String(n);
-    if (n < 1e4) return (n / 1e3).toFixed(1).replace(/\.0$/, "") + "k";
-    return Math.round(n / 1e3) + "k";
+  const fullOf = (b) => `${b.owner}/${b.repo}`;
+  const keyOf = (s) => s.toLowerCase();
+  function parseRepo(input) {
+    const s = String(input || "").trim().replace(/^git@github\.com:/i, "").replace(/^https?:\/\/(www\.)?github\.com\//i, "").replace(/[?#].*$/, "");
+    const parts = s.split("/").filter(Boolean);
+    if (parts.length < 2) return null;
+    const owner = parts[0];
+    const repo = parts[1].replace(/\.git$/i, "");
+    if (!/^[A-Za-z0-9][A-Za-z0-9_-]{0,38}$/.test(owner)) return null;
+    if (!/^[A-Za-z0-9._-]{1,100}$/.test(repo) || repo === "." || repo === "..") return null;
+    return { owner, repo };
+  }
+  const detectCache = /* @__PURE__ */ new Map();
+  function detectUpstream(owner, repo) {
+    const key = keyOf(`${owner}/${repo}`);
+    const hit = detectCache.get(key);
+    if (hit) return hit;
+    const p = fetchRepoInfo(owner, repo).then((info) => {
+      if (!info) return { state: "failed" };
+      const up = info.parent || info.source;
+      if (!info.fork || !up) return { state: "none" };
+      return { state: "fork", upstream: up.full_name };
+    });
+    detectCache.set(key, p);
+    void p.then((d) => {
+      if (d.state === "failed") detectCache.delete(key);
+    });
+    return p;
+  }
+  const viewMemory = { query: "", selected: "", railScroll: 0 };
+  function fitTopics(scope) {
+    const row = scope.querySelector(".ghtk-topics");
+    if (!row || !row.clientWidth) return;
+    const chips = Array.from(row.querySelectorAll(".ghtk-topic:not(.more)"));
+    const more = row.querySelector(".ghtk-topic.more");
+    if (!chips.length || !more) return;
+    chips.forEach((c) => c.hidden = false);
+    more.hidden = true;
+    if (row.scrollWidth <= row.clientWidth) return;
+    let shown = chips.length;
+    more.hidden = false;
+    while (shown > 1) {
+      shown--;
+      chips[shown].hidden = true;
+      more.textContent = `+${chips.length - shown}`;
+      if (row.scrollWidth <= row.clientWidth) return;
+    }
   }
   const LANG_COLORS = {
     JavaScript: "#f1e05a",
@@ -2710,74 +2675,43 @@
     Lua: "#000080",
     Zig: "#ec915c"
   };
-  function renderAbout(about, full, lastCommit) {
-    const expandIcon = `<svg viewBox="0 0 16 16"><path d="M3.75 2h3.5a.75.75 0 0 1 0 1.5h-3.5a.25.25 0 0 0-.25.25v8.5c0 .138.112.25.25.25h8.5a.25.25 0 0 0 .25-.25v-3.5a.75.75 0 0 1 1.5 0v3.5A1.75 1.75 0 0 1 12.25 14h-8.5A1.75 1.75 0 0 1 2 12.25v-8.5C2 2.784 2.784 2 3.75 2Zm6.854-1h4.146a.25.25 0 0 1 .25.25v4.146a.25.25 0 0 1-.427.177L13.03 4.03 9.28 7.78a.75.75 0 0 1-1.06-1.06l3.75-3.75-1.543-1.543A.25.25 0 0 1 10.604 1Z"/></svg>`;
-    const clockIcon = `<svg viewBox="0 0 16 16"><path d="M8 0a8 8 0 1 1 0 16A8 8 0 0 1 8 0ZM1.5 8a6.5 6.5 0 1 0 13 0 6.5 6.5 0 0 0-13 0Zm7-3.25v2.992l2.028.812a.75.75 0 0 1-.557 1.392l-2.5-1A.75.75 0 0 1 7 8.25v-3.5a.75.75 0 0 1 1.5 0Z"/></svg>`;
-    if (about === void 0) {
+  function renderAbout(about) {
+    if (!about) {
+      const text = about === void 0 ? "正在加载仓库简介…" : "无仓库信息";
       return `
       <div class="ghtk-about">
-        <div class="ghtk-about-top"><div class="ghtk-about-desc muted">正在加载仓库简介…</div></div>
+        <div class="ghtk-about-top"><div class="ghtk-about-desc muted">${text}</div></div>
         <div class="ghtk-about-meta"></div>
         <div class="ghtk-topics"></div>
-      </div>
-    `;
-    }
-    if (about === null) {
-      return `
-      <div class="ghtk-about">
-        <div class="ghtk-about-top"><div class="ghtk-about-desc muted">无仓库信息</div></div>
-        <div class="ghtk-about-meta"></div>
-        <div class="ghtk-topics"></div>
-      </div>
-    `;
+      </div>`;
     }
     const desc = about.description?.trim() || "";
-    const metaItems = [];
+    const meta = [];
     if (about.language) {
-      const color = LANG_COLORS[about.language] || "#8b949e";
-      metaItems.push(
-        `<span class="item"><span class="ghtk-lang-dot" style="background:${color}"></span><span>${escapeHtml$1(about.language)}</span></span>`
+      const color = Object.prototype.hasOwnProperty.call(LANG_COLORS, about.language) ? LANG_COLORS[about.language] : "#8b949e";
+      meta.push(
+        `<span class="ghtk-meta-item"><span class="ghtk-lang-dot" style="background:${color}"></span>${escapeHtml(about.language)}</span>`
       );
     }
-    if (about.stars) {
-      metaItems.push(
-        `<span class="item"><svg viewBox="0 0 16 16"><path d="M8 .25a.75.75 0 0 1 .673.418l1.882 3.815 4.21.612a.75.75 0 0 1 .416 1.279l-3.046 2.97.719 4.192a.751.751 0 0 1-1.088.791L8 12.347l-3.766 1.98a.75.75 0 0 1-1.088-.79l.72-4.194L.818 6.374a.75.75 0 0 1 .416-1.28l4.21-.611L7.327.668A.75.75 0 0 1 8 .25Z"/></svg><span>${compactNum(about.stars)}</span></span>`
-      );
-    }
-    if (about.forks) {
-      metaItems.push(
-        `<span class="item"><svg viewBox="0 0 16 16"><path d="M5 5.372v.878c0 .414.336.75.75.75h4.5a.75.75 0 0 0 .75-.75v-.878a2.25 2.25 0 1 1 1.5 0v.878a2.25 2.25 0 0 1-2.25 2.25h-1.5v2.128a2.251 2.251 0 1 1-1.5 0V8.5h-1.5A2.25 2.25 0 0 1 3.5 6.25v-.878a2.25 2.25 0 1 1 1.5 0ZM5 3.25a.75.75 0 1 0-1.5 0 .75.75 0 0 0 1.5 0Zm6.75.75a.75.75 0 1 0 0-1.5.75.75 0 0 0 0 1.5Zm-3 8.75a.75.75 0 1 0-1.5 0 .75.75 0 0 0 1.5 0Z"/></svg><span>${compactNum(about.forks)}</span></span>`
-      );
-    }
-    if (about.updatedAt) {
-      metaItems.push(
-        `<span class="item" title="最近推送 ${formatDate(about.updatedAt)}">${clockIcon}<span>${relativeTime(about.updatedAt)}</span></span>`
-      );
-    }
-    if (about.license) {
-      metaItems.push(`<span class="item"><span>${escapeHtml$1(about.license)}</span></span>`);
-    }
-    const showTopics = about.topics.slice(0, 3);
-    const restTopics = about.topics.length - showTopics.length;
-    const topicsHtml = about.topics.length ? `<div class="ghtk-topics">${showTopics.map((t) => `<span class="ghtk-topic">${escapeHtml$1(t)}</span>`).join("")}${restTopics > 0 ? `<span class="ghtk-topic" style="color:#59636e;background:#f6f8fa;border-color:#d0d7de">+${restTopics}</span>` : ""}</div>` : '<div class="ghtk-topics"></div>';
+    if (about.stars) meta.push(`<span class="ghtk-meta-item" title="Star">${ICON.star}${compactNum(about.stars)}</span>`);
+    if (about.forks) meta.push(`<span class="ghtk-meta-item" title="Fork">${ICON.fork}${compactNum(about.forks)}</span>`);
+    if (about.license) meta.push(`<span class="ghtk-meta-item">${escapeHtml(about.license)}</span>`);
+    const topics = about.topics.map((t, i) => `<span class="ghtk-topic" title="${escapeHtml(t)}"${i >= 3 ? " hidden" : ""}>${escapeHtml(t)}</span>`).join("") + (about.topics.length > 3 ? `<span class="ghtk-topic more">+${about.topics.length - 3}</span>` : '<span class="ghtk-topic more" hidden></span>');
     return `
     <div class="ghtk-about">
       <div class="ghtk-about-top">
-        <div class="ghtk-about-desc">${desc ? escapeHtml$1(desc) : '<span style="font-style:italic">暂无简介</span>'}</div>
-        <button class="ghtk-about-expand" id="ghtk-about-detail" type="button" data-ghtk-popover-trigger title="查看完整信息">${expandIcon}</button>
+        <div class="ghtk-about-desc${desc ? "" : " muted"}">${desc ? escapeHtml(desc) : "暂无简介"}</div>
+        <button class="ghtk-icon-btn ghtk-about-more" type="button" data-act="about" data-ghtk-popover-trigger
+          title="查看完整信息" aria-label="查看完整信息" aria-haspopup="dialog" aria-expanded="false">${ICON.info}</button>
       </div>
-      <div class="ghtk-about-meta">${metaItems.join("")}</div>
-      ${topicsHtml}
-    </div>
-  `;
-  }
-  function escapeHtml$1(s) {
-    return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+      <div class="ghtk-about-meta">${meta.join("")}</div>
+      <div class="ghtk-topics">${topics}</div>
+    </div>`;
   }
   const UpstreamBindPlugin = {
     id: "upstream-bind",
     name: "上游/下游仓库绑定",
-    version: "2.5.0",
+    version: "2.9.0",
     description: "自动检测当前仓库上游，支持手动添加与上下游绑定",
     matches() {
       return true;
@@ -2792,576 +2726,631 @@
       render() {
         return `
         <div class="ghtk-toolbar">
-          <div class="ghtk-search">
-            ${ICONS.search}
-            <input type="text" id="ghtk-search-input" placeholder="搜索绑定" autocomplete="off" spellcheck="false" />
-          </div>
-          <button class="ghtk-toolbar-btn" id="ghtk-add-toggle" type="button" title="添加上游">${ICONS.plus}</button>
+          <label class="ghtk-search">
+            ${ICON.search}
+            <input type="text" id="ghtk-search-input" placeholder="搜索绑定" aria-label="搜索上游或下游" autocomplete="off" spellcheck="false" />
+          </label>
+          <button class="ghtk-icon-btn ghtk-toolbar-add" id="ghtk-add-toggle" type="button"
+            title="添加上游" aria-label="添加上游" aria-pressed="false">${ICON.plus}</button>
         </div>
         <div class="ghtk-split">
           <div class="ghtk-rail">
-            <div class="ghtk-rail-head">
-              <span>上游</span>
-              <span class="ghtk-rail-state" id="ghtk-rail-state"></span>
-            </div>
+            <div class="ghtk-rail-head"><span>上游</span><span id="ghtk-rail-total"></span></div>
             <button class="ghtk-current-repo" id="ghtk-current-repo" type="button" hidden>
-              <svg class="pin" viewBox="0 0 16 16"><path d="M8 16s6-5.686 6-10A6 6 0 0 0 2 6c0 4.314 6 10 6 10Zm0-7a3 3 0 1 1 0-6 3 3 0 0 1 0 6Z"/></svg>
-              <span class="name" id="ghtk-current-repo-name"></span>
-              <svg class="badge bound-icon" viewBox="0 0 16 16"><path d="M8 16A8 8 0 1 1 8 0a8 8 0 0 1 0 16Zm3.78-9.72a.75.75 0 0 0-1.06-1.06L7.25 8.69 5.78 7.22a.75.75 0 0 0-1.06 1.06l2 2a.75.75 0 0 0 1.06 0l4-4Z"/></svg>
-              <svg class="badge unbound-icon" viewBox="0 0 16 16"><path d="M8 0a8 8 0 1 1 0 16A8 8 0 0 1 8 0ZM1.5 8a6.5 6.5 0 1 0 13 0 6.5 6.5 0 0 0-13 0Z"/></svg>
+              ${ICON.pin}<span class="ghtk-cur-name" id="ghtk-current-repo-name"></span>${ICON.circle}
             </button>
-            <div class="ghtk-rail-list" id="ghtk-rail-list"></div>
+            <div class="ghtk-rail-list" id="ghtk-rail-list" role="listbox" aria-label="上游列表"></div>
           </div>
           <div class="ghtk-detail" id="ghtk-detail"></div>
         </div>
       `;
       },
       mount(ctx, root) {
-        const state = {
-          selected: -1,
-          addMode: false,
-          query: "",
-          status: { text: "" },
-          draft: "",
-          about: /* @__PURE__ */ new Map(),
-          lastCommit: /* @__PURE__ */ new Map()
-        };
         const railList = root.querySelector("#ghtk-rail-list");
-        const railState = root.querySelector("#ghtk-rail-state");
+        const railTotal = root.querySelector("#ghtk-rail-total");
         const detail = root.querySelector("#ghtk-detail");
         const addToggle = root.querySelector("#ghtk-add-toggle");
         const searchInput = root.querySelector("#ghtk-search-input");
-        const currentRepoBtn = root.querySelector("#ghtk-current-repo");
-        const currentRepoName = root.querySelector("#ghtk-current-repo-name");
-        if (!railList || !detail || !railState) return;
+        const curBtn = root.querySelector("#ghtk-current-repo");
+        const curName = root.querySelector("#ghtk-current-repo-name");
+        if (!railList || !railTotal || !detail || !addToggle || !searchInput || !curBtn || !curName) return;
         const currentUser = getCurrentUser(ctx.dom);
         const page = ctx.page;
         const currentRepo = page.owner && page.repo ? `${page.owner}/${page.repo}` : "";
-        const isUpstreamOfCurrent = (b) => !!currentRepo && `${b.owner}/${b.repo}`.toLowerCase() === currentRepo.toLowerCase();
-        const isDownstreamOfCurrent = (b) => !!currentRepo && (b.downstreams || []).some((d) => d.toLowerCase() === currentRepo.toLowerCase());
-        const updateCurrentRepoBtn = () => {
-          if (!currentRepoBtn) return;
-          if (!currentRepo) {
-            currentRepoBtn.hidden = true;
+        const curKey = keyOf(currentRepo);
+        const state = {
+          selected: "",
+          addMode: false,
+          draft: "",
+          detection: currentRepo ? { state: "pending" } : { state: "none" },
+          about: /* @__PURE__ */ new Map(),
+          lastCommit: /* @__PURE__ */ new Map(),
+          requested: /* @__PURE__ */ new Set(),
+          bindingKey: "",
+          dirty: false
+        };
+        const detectionPromise = currentRepo ? detectUpstream(page.owner, page.repo) : Promise.resolve({ state: "none" });
+        let releaseAdd = null;
+        const isUpstreamOfCurrent = (b) => !!curKey && keyOf(fullOf(b)) === curKey;
+        const isDownstreamOfCurrent = (b) => !!curKey && (b.downstreams || []).some((d) => keyOf(d) === curKey);
+        const isRelated = (b) => isUpstreamOfCurrent(b) || isDownstreamOfCurrent(b);
+        const setSelected = (key) => {
+          state.selected = key;
+          viewMemory.selected = key;
+        };
+        const pickInitial = () => {
+          const list = loadBindings();
+          const pick = list.find(isUpstreamOfCurrent) || list.find(isDownstreamOfCurrent) || list.find((b) => keyOf(fullOf(b)) === viewMemory.selected) || list[0];
+          setSelected(pick ? keyOf(fullOf(pick)) : "");
+        };
+        const findSelected = (list = loadBindings()) => list.find((b) => keyOf(fullOf(b)) === state.selected) || null;
+        const matchesQuery = (b, q) => !q || keyOf(fullOf(b)).includes(q) || (b.downstreams || []).some((d) => keyOf(d).includes(q));
+        const copy = (text) => {
+          void copyText(text).then((ok) => ctx.ui.toast(ok ? "已复制" : "复制失败"));
+        };
+        const updateCurrentEntry = () => {
+          const list = loadBindings();
+          if (!currentRepo || list.some(isRelated)) {
+            curBtn.hidden = true;
             return;
           }
-          currentRepoBtn.hidden = false;
-          const list = loadBindings();
-          const upIdx = list.findIndex(isUpstreamOfCurrent);
-          const downIdx = list.findIndex(isDownstreamOfCurrent);
-          const idx = upIdx >= 0 ? upIdx : downIdx;
-          const bound = idx >= 0;
-          currentRepoBtn.classList.toggle("bound", bound);
-          currentRepoBtn.dataset.idx = bound ? String(idx) : "";
-          if (currentRepoName) currentRepoName.textContent = currentRepo;
-          const stateText = bound ? upIdx >= 0 ? "已绑定（当前仓库就是上游）" : "已绑定（当前仓库是这条绑定的下游）" : "未绑定，点击添加";
-          const tip = `当前仓库：${currentRepo}
-${stateText}`;
-          currentRepoBtn.title = tip;
-          currentRepoBtn.setAttribute("aria-label", tip);
-        };
-        const pickDefault = () => {
-          const list = loadBindings();
-          let idx = list.findIndex(isUpstreamOfCurrent);
-          if (idx < 0) idx = list.findIndex(isDownstreamOfCurrent);
-          state.selected = idx >= 0 ? idx : list.length ? 0 : -1;
-        };
-        const renderStatus = () => {
-          railState.textContent = state.status.text;
-          railState.style.color = state.status.color || "";
+          curBtn.hidden = false;
+          curName.textContent = currentRepo;
+          const d = state.detection;
+          let tip;
+          if (d.state === "pending") tip = `当前仓库：${currentRepo}
+正在检测上游…`;
+          else if (d.state === "fork") tip = `当前仓库：${currentRepo}
+未绑定 · 上游是 ${d.upstream}
+点击绑定为它的下游`;
+          else if (d.state === "failed") tip = `当前仓库：${currentRepo}
+未绑定 · 上游检测失败
+点击手动添加`;
+          else tip = `当前仓库：${currentRepo}
+未绑定
+点击添加为上游`;
+          curBtn.title = tip;
+          curBtn.setAttribute("aria-label", tip.replace(/\n/g, "，"));
+          if (d.state === "pending") curBtn.setAttribute("aria-busy", "true");
+          else curBtn.removeAttribute("aria-busy");
         };
         const renderRail = () => {
-          updateCurrentRepoBtn();
+          updateCurrentEntry();
           const list = loadBindings();
-          const q = state.query.trim().toLowerCase();
-          const rows = list.map((b, idx) => ({ b, idx })).filter(({ b }) => !q || `${b.owner}/${b.repo}`.toLowerCase().includes(q));
+          railTotal.textContent = list.length ? String(list.length) : "";
           if (!list.length) {
-            railList.innerHTML = `<div class="ghtk-rail-empty">暂无绑定<br>点上方 + 添加</div>`;
+            railList.innerHTML = `<div class="ghtk-rail-empty">暂无绑定</div>`;
             return;
           }
+          const q = viewMemory.query.trim().toLowerCase();
+          const rows = list.filter((b) => matchesQuery(b, q));
           if (!rows.length) {
             railList.innerHTML = `<div class="ghtk-rail-empty">无匹配</div>`;
             return;
           }
-          railList.innerHTML = rows.map(({ b, idx }) => {
-            const hitUp = isUpstreamOfCurrent(b);
-            const hitDown = isDownstreamOfCurrent(b);
-            const related = hitUp || hitDown;
-            const cls = [
-              "ghtk-rail-item",
-              idx === state.selected && !state.addMode ? "active" : "",
-              related ? "related" : ""
-            ].filter(Boolean).join(" ");
-            const tip = related ? hitUp ? "当前仓库即此上游" : "当前仓库是它的下游" : `${b.owner}/${b.repo}`;
+          const activeVisible = !state.addMode && rows.some((b) => keyOf(fullOf(b)) === state.selected);
+          railList.innerHTML = rows.map((b, i) => {
+            const key = keyOf(fullOf(b));
+            const active2 = !state.addMode && key === state.selected;
+            const related = isRelated(b);
+            const count = (b.downstreams || []).length;
+            const tabIndex = active2 || !activeVisible && i === 0 ? "0" : "-1";
+            const tip = `${fullOf(b)}${related ? " · 与当前仓库相关" : ""} · ${count} 个下游`;
             return `
-            <div class="${cls}" data-idx="${idx}" title="${tip}">
-              <span class="ghtk-rail-name">${b.owner}/${b.repo}</span>
-              ${related ? '<span class="ghtk-rail-dot" title="与当前页面相关"></span>' : ""}
-              <span class="ghtk-rail-n">${(b.downstreams || []).length}</span>
-            </div>
-          `;
+              <button class="ghtk-rail-item${active2 ? " active" : ""}" type="button" role="option"
+                aria-selected="${active2}" tabindex="${tabIndex}" data-key="${escapeHtml(key)}" title="${escapeHtml(tip)}">
+                <span class="ghtk-rail-text">
+                  <span class="ghtk-rail-name">${related ? ICON.pin : ""}<span>${escapeHtml(b.repo)}</span></span>
+                  <span class="ghtk-rail-owner">${escapeHtml(b.owner)}</span>
+                </span>
+                <span class="ghtk-rail-count">${count}</span>
+              </button>`;
           }).join("");
-          railList.querySelectorAll(".ghtk-rail-item").forEach((el) => {
-            el.addEventListener("click", () => {
-              state.selected = +el.dataset.idx;
-              state.addMode = false;
-              addToggle?.classList.remove("active");
-              renderRail();
-              renderDetail();
-            });
-          });
+          railList.scrollTop = viewMemory.railScroll;
         };
-        const renderDetail = () => {
-          const list = loadBindings();
-          if (state.addMode) {
-            renderAddView(list);
+        const selectKey = (key, focus = false) => {
+          if (state.addMode) exitAddMode(false);
+          setSelected(key);
+          renderRail();
+          renderDetail();
+          if (focus) {
+            railList.querySelector(`.ghtk-rail-item[data-key="${CSS.escape(key)}"]`)?.focus();
+          }
+        };
+        railList.addEventListener("click", (e) => {
+          const item = e.target.closest(".ghtk-rail-item");
+          if (item?.dataset.key) selectKey(item.dataset.key);
+        });
+        railList.addEventListener("keydown", (e) => {
+          const items = Array.from(railList.querySelectorAll(".ghtk-rail-item"));
+          const i = items.indexOf(document.activeElement);
+          if (i < 0) return;
+          let next;
+          if (e.key === "ArrowDown") next = Math.min(items.length - 1, i + 1);
+          else if (e.key === "ArrowUp") next = Math.max(0, i - 1);
+          else if (e.key === "Home") next = 0;
+          else if (e.key === "End") next = items.length - 1;
+          else return;
+          e.preventDefault();
+          const key = items[next]?.dataset.key;
+          if (key) selectKey(key, true);
+        });
+        railList.addEventListener(
+          "scroll",
+          () => {
+            viewMemory.railScroll = railList.scrollTop;
+          },
+          { passive: true }
+        );
+        const enterAddMode = (prefill = "") => {
+          if (!state.addMode) {
+            state.addMode = true;
+            releaseAdd = pushLayer("transient", () => {
+              releaseAdd = null;
+              exitAddMode();
+            });
+          }
+          state.draft = prefill;
+          addToggle.classList.add("active");
+          addToggle.setAttribute("aria-pressed", "true");
+          renderRail();
+          renderDetail();
+          const input = detail.querySelector("#ghtk-upstream-input");
+          input?.focus({ preventScroll: true });
+          input?.select();
+        };
+        function exitAddMode(render = true) {
+          if (!state.addMode) return;
+          const hadFocus = !!detail && detail.contains(document.activeElement);
+          state.addMode = false;
+          addToggle.classList.remove("active");
+          addToggle.setAttribute("aria-pressed", "false");
+          const release = releaseAdd;
+          releaseAdd = null;
+          release?.();
+          if (!render) return;
+          renderRail();
+          renderDetail();
+          if (hadFocus) addToggle.focus({ preventScroll: true });
+        }
+        function renderDetail() {
+          if (!detail) return;
+          if (isPopoverOpen()) {
+            state.dirty = true;
             return;
           }
+          state.dirty = false;
+          if (state.addMode) {
+            renderAddView();
+            return;
+          }
+          const list = loadBindings();
           if (!list.length) {
             detail.innerHTML = `
-            <div class="ghtk-detail-empty">
-              <div>暂无绑定</div>
-              <button class="ghtk-btn primary" id="ghtk-empty-add" type="button">添加上游</button>
-            </div>
-          `;
-            detail.querySelector("#ghtk-empty-add")?.addEventListener("click", () => enterAddMode());
+            <div class="ghtk-blank">
+              <div>还没有绑定任何上游</div>
+              <button class="ghtk-btn primary" type="button" data-act="add-upstream">添加上游</button>
+            </div>`;
             return;
           }
-          const b = list[state.selected];
+          let b = findSelected(list);
           if (!b) {
-            state.selected = 0;
-            renderDetail();
-            return;
+            pickInitial();
+            b = findSelected(list);
           }
+          if (!b) return;
+          const full = fullOf(b);
+          const key = keyOf(full);
           const downs = b.downstreams || [];
-          const full = `${b.owner}/${b.repo}`;
-          const about = state.about.get(full.toLowerCase());
-          state.lastCommit.get(full.toLowerCase());
-          const aboutHtml = renderAbout(about);
-          const ownerText = `${b.owner}`;
-          const rows = downs.length ? downs.map((d) => {
-            const isMine = !!currentUser && d.toLowerCase().startsWith(`${currentUser.toLowerCase()}/`);
-            const isCurrentPage = !!currentRepo && d.toLowerCase() === currentRepo.toLowerCase();
-            const tag = isCurrentPage ? '<span class="ghtk-chip">当前仓库</span>' : isMine ? '<span class="ghtk-chip">我的 Fork</span>' : "";
+          const about = state.about.get(key);
+          const last = state.lastCommit.get(key);
+          const userPrefix = currentUser ? keyOf(currentUser) + "/" : "";
+          const myForkBound = !!userPrefix && downs.some((d) => keyOf(d).startsWith(userPrefix));
+          const busy = state.bindingKey === key;
+          const rows = downs.map((d) => {
+            const mine = !!userPrefix && keyOf(d).startsWith(userPrefix);
+            const isCur = !!curKey && keyOf(d) === curKey;
             return `
-            <div class="ghtk-drow">
-              <span class="ghtk-drow-dash">└</span>
-              <a href="https://github.com/${d}" data-ghtk-nav title="打开下游 ${d}">${d}</a>
-              ${tag}
-              <button class="ghtk-icon-btn ghtk-drow-rm" data-remove="${d}" type="button" title="移除下游">${ICONS.del}</button>
-            </div>
-          `;
-          }).join("") : `<div class="ghtk-dempty">无下游</div>`;
+              <div class="ghtk-drow">
+                <span class="ghtk-drow-branch" aria-hidden="true">└</span>
+                ${isCur ? `<span class="ghtk-drow-pin" title="当前仓库">${ICON.pin}</span>` : ""}
+                <a class="ghtk-drow-name" href="https://github.com/${escapeHtml(d)}" data-ghtk-nav title="${escapeHtml(d)}">${escapeHtml(d)}</a>
+                ${mine ? '<span class="ghtk-chip">我的 Fork</span>' : ""}
+                <button class="ghtk-icon-btn ghtk-drow-rm" type="button" data-act="remove-down" data-down="${escapeHtml(d)}"
+                  title="移除下游" aria-label="移除下游 ${escapeHtml(d)}">${ICON.x}</button>
+              </div>`;
+          }).join("");
+          const emptyCta = currentUser ? `<button class="ghtk-empty-cta" type="button" data-act="bind-fork"${busy ? ' aria-busy="true"' : ""}>
+               <span>还没有下游</span><strong>${busy ? "检测中…" : "检测我的 Fork"}</strong>
+             </button>` : `<button class="ghtk-empty-cta" type="button" data-act="add-down">
+               <span>还没有下游</span><strong>添加下游</strong>
+             </button>`;
+          const foot = currentUser && downs.length && !myForkBound ? `<div class="ghtk-detail-foot">
+                 <button class="ghtk-btn primary block" type="button" data-act="bind-fork"${busy ? ' aria-busy="true"' : ""}>
+                   ${busy ? '<span class="ghtk-spinner" aria-hidden="true"></span>检测中…' : "绑定我的 Fork"}
+                 </button>
+               </div>` : "";
+          const when = last || about?.updatedAt || null;
+          const subParts = [`${downs.length} 个下游`];
+          if (when) subParts.push(`${relativeTime(when)}更新`);
+          if (!currentUser) subParts.push("未登录");
+          const subTip = when ? `${last ? "最后提交" : "最近推送"} ${formatDate(when)}` : "";
           detail.innerHTML = `
           <div class="ghtk-detail-head">
-            <div class="ghtk-detail-title">
-              <span class="name" title="${full}">${full}</span>
-              ${isUpstreamOfCurrent(b) ? '<span class="ghtk-chip">当前仓库</span>' : ""}
+            <div class="ghtk-detail-title-row">
+              <a class="ghtk-detail-title" href="https://github.com/${escapeHtml(full)}" data-ghtk-nav
+                title="打开上游 ${escapeHtml(full)}">${escapeHtml(full)}</a>
+              <button class="ghtk-icon-btn" type="button" data-act="copy" title="复制上游链接" aria-label="复制上游链接">${ICON.copy}</button>
+              <button class="ghtk-icon-btn" type="button" data-act="more" title="更多操作" aria-label="更多操作"
+                aria-haspopup="menu" aria-expanded="false">${ICON.kebab}</button>
             </div>
-            <div class="ghtk-detail-sub">
-              <span>上游所有者 <b>${ownerText}</b></span>
-              <span>${currentUser ? `当前用户 <b>${currentUser}</b>` : '<span style="color:#cf222e">未登录</span>'}</span>
-            </div>
+            <div class="ghtk-detail-sub"${subTip ? ` title="${escapeHtml(subTip)}"` : ""}>${escapeHtml(subParts.join(" · "))}</div>
           </div>
-
-          ${aboutHtml}
-
+          ${renderAbout(about)}
           <div class="ghtk-detail-body">
-            <div class="ghtk-sec-label">下游 · ${downs.length}</div>
-            ${rows}
+            <div class="ghtk-sec-label">下游</div>
+            ${downs.length ? rows : emptyCta}
           </div>
-
-          <div class="ghtk-detail-foot">
-            <div class="ghtk-foot-main">
-              <button class="ghtk-btn primary" id="ghtk-auto-bind" type="button">绑定下游</button>
-              <button class="ghtk-btn" id="ghtk-manual-bind" type="button">手动绑定</button>
-            </div>
-            <div class="ghtk-foot-main ghtk-foot-second">
-              <a class="ghtk-btn" href="https://github.com/${full}" data-ghtk-nav>打开上游</a>
-              <button class="ghtk-btn" id="ghtk-copy-up" type="button">复制链接</button>
-              <button class="ghtk-btn danger" id="ghtk-remove-up" type="button">删除</button>
-            </div>
-          </div>
+          ${foot}
         `;
-          detail.querySelector("#ghtk-about-detail")?.addEventListener("click", (ev) => {
-            ev.preventDefault();
-            ev.stopPropagation();
-            const data = state.about.get(full.toLowerCase());
-            if (!data) {
-              ctx.ui.toast(state.about.has(full.toLowerCase()) ? "无仓库信息" : "正在加载…");
-              return;
-            }
-            const anchor = ev.currentTarget;
-            const lastCommitDate = state.lastCommit.get(full.toLowerCase());
-            showAboutPopover({
-              about: data,
-              anchor,
-              pageType: page.type,
-              extraMeta: [
-                [
-                  "最近推送",
-                  data.updatedAt ? `${formatDate(data.updatedAt)}（${relativeTime(data.updatedAt)}）` : "—"
-                ],
-                ["最后提交", lastCommitDate ? `${formatDate(lastCommitDate)}（${relativeTime(lastCommitDate)}）` : "—"]
-              ],
-              actions: [
-                { label: "打开仓库", href: `https://github.com/${full}` },
-                {
-                  label: "复制链接",
-                  onClick: () => {
-                    navigator.clipboard.writeText(`https://github.com/${full}`).then(() => ctx.ui.toast("已复制")).catch(() => ctx.ui.toast("复制失败"));
-                  }
-                }
-              ]
-            });
-          });
-          detail.querySelectorAll("[data-remove]").forEach((btn) => {
-            btn.addEventListener("click", async () => {
-              const down = btn.dataset.remove;
-              const ok = await Modal.show({
-                title: "移除下游",
-                content: `从 <b>${full}</b> 的下游中移除 <b>${down}</b>？`,
-                confirmText: "移除",
-                cancelText: "取消",
-                danger: true
-              });
-              if (!ok) return;
-              const latest = loadBindings();
-              if (!latest[state.selected]) return;
-              latest[state.selected].downstreams = (latest[state.selected].downstreams || []).filter(
-                (x) => x !== down
-              );
-              saveBindings(latest);
-              renderRail();
-              renderDetail();
-              ctx.ui.toast("已移除");
-            });
-          });
-          detail.querySelector("#ghtk-auto-bind")?.addEventListener("click", async () => {
-            if (!currentUser) {
-              ctx.ui.toast("未登录");
-              return;
-            }
-            const target = loadBindings()[state.selected];
-            if (!target) return;
-            ctx.ui.toast("正在检测…");
-            const res = await checkHasForked(currentUser, target.owner, target.repo);
-            if (res.forkUrl) {
-              const latest2 = loadBindings();
-              const cur2 = latest2[state.selected];
-              if (!cur2) return;
-              const down = `${currentUser}/${cur2.repo}`;
-              cur2.downstreams = cur2.downstreams || [];
-              if (!cur2.downstreams.includes(down)) {
-                cur2.downstreams.push(down);
-                saveBindings(latest2);
-                renderRail();
-                renderDetail();
-                ctx.ui.toast("已绑定 " + down);
-              } else {
-                ctx.ui.toast("已存在");
-              }
-              return;
-            }
-            if (res.reason === "rate-limited") {
-              ctx.ui.toast("API 限流，改用手动确认");
-            } else if (res.reason === "unknown") {
-              ctx.ui.toast("检测失败，请手动确认");
-            } else {
-              ctx.ui.toast("未检测到 Fork，请手动确认");
-            }
-            const suggested = `${currentUser}/${target.repo}`;
-            const val = await Modal.show({
-              title: "确认下游仓库",
-              content: "没自动检测到你的 fork。如果确实 fork 过（比如改了名字），直接填仓库全名。",
-              showInput: true,
-              inputValue: suggested,
-              placeholder: "owner/repo",
-              confirmText: "绑定"
-            });
-            if (!val) return;
-            const cleaned = String(val).trim().replace(/^https?:\/\/github\.com\//i, "");
-            if (!cleaned.includes("/")) {
-              ctx.ui.toast("格式错误");
-              return;
-            }
-            const latest = loadBindings();
-            const cur = latest[state.selected];
-            if (!cur) return;
-            cur.downstreams = cur.downstreams || [];
-            if (!cur.downstreams.includes(cleaned)) {
-              cur.downstreams.push(cleaned);
-              saveBindings(latest);
-              renderRail();
-              renderDetail();
-              ctx.ui.toast("已绑定 " + cleaned);
-            } else {
-              ctx.ui.toast("已存在");
-            }
-          });
-          detail.querySelector("#ghtk-manual-bind")?.addEventListener("click", async () => {
-            const val = await Modal.show({
-              title: "绑定下游",
-              showInput: true,
-              inputValue: currentUser ? `${currentUser}/` : "",
-              placeholder: "owner/repo",
-              confirmText: "绑定"
-            });
-            if (!val) return;
-            const cleaned = String(val).trim().replace(/^https?:\/\/github\.com\//i, "");
-            if (!cleaned.includes("/")) {
-              ctx.ui.toast("格式错误");
-              return;
-            }
-            const latest = loadBindings();
-            const cur = latest[state.selected];
-            if (!cur) return;
-            cur.downstreams = cur.downstreams || [];
-            if (!cur.downstreams.includes(cleaned)) {
-              cur.downstreams.push(cleaned);
-              saveBindings(latest);
-              renderRail();
-              renderDetail();
-              ctx.ui.toast("已绑定 " + cleaned);
-            } else {
-              ctx.ui.toast("已存在");
-            }
-          });
-          detail.querySelector("#ghtk-copy-up")?.addEventListener("click", () => {
-            navigator.clipboard.writeText(`https://github.com/${full}`).then(() => ctx.ui.toast("已复制")).catch(() => ctx.ui.toast("复制失败"));
-          });
-          detail.querySelector("#ghtk-remove-up")?.addEventListener("click", async () => {
-            const ok = await Modal.show({
-              title: "删除绑定",
-              content: `删除上游 <b>${full}</b> 及其全部下游记录？`,
-              confirmText: "删除",
-              cancelText: "取消",
-              danger: true
-            });
-            if (!ok) return;
-            const latest = loadBindings();
-            latest.splice(state.selected, 1);
-            saveBindings(latest);
-            pickDefault();
-            renderRail();
-            renderDetail();
-            ctx.ui.toast("已删除");
-          });
-          loadAbout(b);
-          loadCommitTime(b);
-        };
-        const loadAbout = (b) => {
-          const key = `${b.owner}/${b.repo}`.toLowerCase();
-          if (state.about.has(key)) return;
+          fitTopics(detail);
+          loadFor(b);
+        }
+        if (typeof ResizeObserver !== "undefined") {
+          new ResizeObserver(() => {
+            if (detail.clientWidth) fitTopics(detail);
+          }).observe(detail);
+        }
+        const loadFor = (b) => {
+          const key = keyOf(fullOf(b));
+          if (state.requested.has(key)) return;
+          state.requested.add(key);
           loadRepoAbout(b.owner, b.repo, (data) => {
             state.about.set(key, data);
-            const cur = loadBindings()[state.selected];
-            if (!cur) return;
-            if (`${cur.owner}/${cur.repo}`.toLowerCase() === key) renderDetail();
+            if (state.selected === key && !state.addMode) renderDetail();
           });
-        };
-        const loadCommitTime = (b) => {
-          const key = `${b.owner}/${b.repo}`.toLowerCase();
-          if (state.lastCommit.has(key)) return;
           loadLastCommit(b.owner, b.repo, (date) => {
             state.lastCommit.set(key, date);
-            const cur = loadBindings()[state.selected];
-            if (!cur) return;
-            if (`${cur.owner}/${cur.repo}`.toLowerCase() === key) renderDetail();
+            if (state.selected === key && !state.addMode) renderDetail();
           });
         };
-        const enterAddMode = () => {
-          state.addMode = true;
-          state.draft = "";
-          addToggle?.classList.add("active");
-          renderRail();
-          renderDetail();
-        };
-        const exitAddMode = () => {
-          state.addMode = false;
-          addToggle?.classList.remove("active");
-          renderRail();
-          renderDetail();
-        };
-        const renderAddView = (list) => {
-          const st = state.status;
-          const detected = st.fullName && st.owner && st.repo;
-          const alreadyBound = detected && st.bound;
+        function renderAddView() {
+          if (!detail) return;
+          const prev = detail.querySelector("#ghtk-upstream-input");
+          const hadFocus = !!prev && document.activeElement === prev;
+          const selStart = prev?.selectionStart ?? null;
+          const selEnd = prev?.selectionEnd ?? null;
+          const list = loadBindings();
+          const d = state.detection;
+          let extra = "";
+          let detectPrimary = false;
+          if (d.state === "pending") {
+            extra = '<div class="ghtk-note">正在检测当前仓库…</div>';
+          } else if (d.state === "fork") {
+            const up = list.find((x) => keyOf(fullOf(x)) === keyOf(d.upstream));
+            const already = !!up && (up.downstreams || []).some((x) => keyOf(x) === curKey);
+            if (already) {
+              extra = `<div class="ghtk-note">当前仓库已是 ${escapeHtml(d.upstream)} 的下游</div>`;
+            } else {
+              detectPrimary = true;
+              extra = `
+              <div class="ghtk-detect">
+                <div class="ghtk-detect-label">当前仓库的上游</div>
+                <div class="ghtk-detect-name" title="${escapeHtml(d.upstream)}">${escapeHtml(d.upstream)}</div>
+                <div class="ghtk-btn-row">
+                  <button class="ghtk-btn primary" type="button" data-act="bind-current">绑定为下游</button>
+                  <a class="ghtk-btn" href="https://github.com/${escapeHtml(d.upstream)}" data-ghtk-nav>打开</a>
+                </div>
+              </div>`;
+            }
+          } else if (d.state === "failed") {
+            extra = '<div class="ghtk-note">没能获取当前仓库信息</div>';
+          } else if (currentRepo) {
+            extra = '<div class="ghtk-note">当前仓库不是 Fork，没有上游</div>';
+          }
           detail.innerHTML = `
           <div class="ghtk-addview">
             <div class="ghtk-addview-head">
               <div class="ghtk-addview-title">添加上游</div>
-              <div class="ghtk-addview-sub">owner/repo 或完整链接</div>
+              <div class="ghtk-detail-sub">输入 owner/repo 或粘贴仓库链接</div>
             </div>
             <div class="ghtk-addview-body">
-              <label class="ghtk-field-label" for="ghtk-upstream-input">仓库</label>
               <div class="ghtk-field">
-                <input type="text" id="ghtk-upstream-input" placeholder="owner/repo" value="${state.draft.replace(/"/g, "&quot;")}" />
-                <button class="ghtk-btn primary" id="ghtk-add-upstream" type="button">添加</button>
-              </div>
-              <div class="ghtk-hint">也支持粘贴 https://github.com/owner/repo</div>
-              ${detected && !alreadyBound ? `
-                <div class="ghtk-detect">
-                  <div class="ghtk-detect-label">检测到当前仓库上游</div>
-                  <div class="ghtk-detect-repo" title="${st.fullName}">${st.fullName}</div>
-                  <div class="ghtk-detect-actions">
-                    <button class="ghtk-btn primary" id="ghtk-oneclick-bind" type="button">绑定为下游</button>
-                    <a class="ghtk-btn" href="https://github.com/${st.fullName}" data-ghtk-nav>打开</a>
-                  </div>
+                <label class="ghtk-field-label" for="ghtk-upstream-input">仓库</label>
+                <div class="ghtk-field-row">
+                  <input class="ghtk-input" type="text" id="ghtk-upstream-input" placeholder="owner/repo"
+                    value="${escapeHtml(state.draft)}" autocomplete="off" spellcheck="false" />
+                  <button class="ghtk-btn${detectPrimary ? "" : " primary"}" type="button" data-act="submit-upstream">添加</button>
                 </div>
-              ` : detected && alreadyBound ? `<div class="ghtk-note">当前仓库已绑定上游 ${st.fullName}</div>` : st.text === "检测失败" ? `<div class="ghtk-note">无法获取仓库信息</div>` : st.text === "无上游" ? `<div class="ghtk-note">当前仓库不是 Fork，没有上游</div>` : ""}
-              ${list.length === 0 ? "" : ""}
+              </div>
+              ${extra}
             </div>
-            <div class="ghtk-addview-foot">
-              <button class="ghtk-btn" id="ghtk-add-cancel" type="button">取消</button>
+            <div class="ghtk-detail-foot">
+              <div class="ghtk-btn-row">
+                <button class="ghtk-btn" type="button" data-act="cancel-add">取消</button>
+              </div>
             </div>
           </div>
         `;
-          const input = detail.querySelector("#ghtk-upstream-input");
-          input?.focus();
-          detail.querySelector("#ghtk-add-cancel")?.addEventListener("click", () => exitAddMode());
-          const submit = () => {
-            const val = (input?.value || "").trim().replace(/^https?:\/\/github\.com\//i, "");
-            if (!val || !val.includes("/")) {
-              ctx.ui.toast("格式错误");
-              return;
+          if (hadFocus) {
+            const input = detail.querySelector("#ghtk-upstream-input");
+            if (input) {
+              input.focus({ preventScroll: true });
+              if (selStart !== null && selEnd !== null) input.setSelectionRange(selStart, selEnd);
             }
-            const [owner, repo] = val.split("/");
-            if (!owner || !repo) {
-              ctx.ui.toast("格式错误");
-              return;
-            }
-            const latest = loadBindings();
-            const key = `${owner}/${repo}`.toLowerCase();
-            if (latest.some((b) => `${b.owner}/${b.repo}`.toLowerCase() === key)) {
-              ctx.ui.toast("已存在");
-              return;
-            }
-            latest.push({ owner, repo, downstreams: [], createdAt: Date.now() });
-            saveBindings(latest);
-            state.selected = latest.length - 1;
-            state.addMode = false;
-            addToggle?.classList.remove("active");
-            renderRail();
-            renderDetail();
-            ctx.ui.toast("已添加 " + owner + "/" + repo);
-          };
-          detail.querySelector("#ghtk-add-upstream")?.addEventListener("click", submit);
-          input?.addEventListener("keydown", (e) => {
-            if (e.key === "Enter") submit();
-          });
-          detail.querySelector("#ghtk-oneclick-bind")?.addEventListener("click", () => {
-            if (!st.owner || !st.repo || !st.fullName) return;
-            const latest = loadBindings();
-            let binding = latest.find(
-              (x) => x.owner.toLowerCase() === st.owner.toLowerCase() && x.repo.toLowerCase() === st.repo.toLowerCase()
-            );
-            if (!binding) {
-              binding = { owner: st.owner, repo: st.repo, downstreams: [], createdAt: Date.now() };
-              latest.push(binding);
-            }
-            binding.downstreams = binding.downstreams || [];
-            if (currentRepo && !binding.downstreams.includes(currentRepo)) {
-              binding.downstreams.push(currentRepo);
-            }
-            saveBindings(latest);
-            state.selected = latest.indexOf(binding);
-            state.addMode = false;
-            state.status = { ...st, bound: true };
-            addToggle?.classList.remove("active");
-            renderStatus();
-            renderRail();
-            renderDetail();
-            ctx.ui.toast("已绑定 " + (currentRepo || st.fullName));
-          });
+          }
+        }
+        const addDownstream = (upKey, down) => {
+          const list = loadBindings();
+          const b = list.find((x) => keyOf(fullOf(x)) === upKey);
+          if (!b) return "missing";
+          b.downstreams = b.downstreams || [];
+          if (b.downstreams.some((d) => keyOf(d) === keyOf(down))) return "exists";
+          b.downstreams.push(down);
+          saveBindings(list);
+          return "added";
         };
-        searchInput?.addEventListener("input", () => {
-          state.query = searchInput.value;
+        const reportAdd = (r) => {
           renderRail();
-        });
-        addToggle?.addEventListener("click", () => {
-          if (state.addMode) exitAddMode();
-          else enterAddMode();
-        });
-        currentRepoBtn?.addEventListener("click", () => {
-          const idxText = currentRepoBtn.dataset.idx;
-          if (idxText !== void 0 && idxText !== "") {
-            state.selected = +idxText;
-            state.addMode = false;
-            addToggle?.classList.remove("active");
-            renderRail();
-            renderDetail();
+          renderDetail();
+          ctx.ui.toast(r === "added" ? "已绑定" : r === "exists" ? "已存在" : "上游已删除");
+        };
+        const promptAddDownstream = async (upKey, opts = {}) => {
+          const val = await Modal.show({
+            title: opts.title || "添加下游",
+            content: opts.content || "",
+            showInput: true,
+            inputValue: opts.value ?? "",
+            placeholder: "owner/repo 或链接",
+            confirmText: "绑定"
+          });
+          if (val === null || val === false) return;
+          const p = parseRepo(String(val));
+          if (!p) {
+            ctx.ui.toast("格式错误");
             return;
           }
-          enterAddMode();
-          const input = root.querySelector("#ghtk-upstream-input");
-          if (input) {
-            input.value = currentRepo;
-            input.focus();
+          reportAdd(addDownstream(upKey, `${p.owner}/${p.repo}`));
+        };
+        const bindMyFork = async (b) => {
+          const upKey = keyOf(fullOf(b));
+          if (!currentUser) {
+            await promptAddDownstream(upKey);
+            return;
+          }
+          if (state.bindingKey) return;
+          state.bindingKey = upKey;
+          renderDetail();
+          const res = await checkHasForked(currentUser, b.owner, b.repo);
+          state.bindingKey = "";
+          if (res.forkUrl) {
+            reportAdd(addDownstream(upKey, `${currentUser}/${b.repo}`));
+            return;
+          }
+          renderDetail();
+          const reason = res.reason === "rate-limited" ? "GitHub API 暂时限流，没法自动检测。" : res.reason === "unknown" ? "自动检测失败。" : `没找到 ${escapeHtml(currentUser)}/${escapeHtml(b.repo)}。`;
+          await promptAddDownstream(upKey, {
+            title: "确认我的 Fork",
+            content: `${reason}如果 fork 过（比如改了名字），填仓库全名即可。`,
+            value: `${currentUser}/${b.repo}`
+          });
+        };
+        const removeDownstream = async (b, down) => {
+          const ok = await Modal.show({
+            title: "移除下游",
+            content: `从 <b>${escapeHtml(fullOf(b))}</b> 的下游中移除 <b>${escapeHtml(down)}</b>？`,
+            confirmText: "移除",
+            danger: true
+          });
+          if (!ok) return;
+          const upKey = keyOf(fullOf(b));
+          const list = loadBindings();
+          const target = list.find((x) => keyOf(fullOf(x)) === upKey);
+          if (!target) return;
+          target.downstreams = (target.downstreams || []).filter((d) => keyOf(d) !== keyOf(down));
+          saveBindings(list);
+          renderRail();
+          renderDetail();
+          ctx.ui.toast("已移除");
+        };
+        const removeBinding = async (b) => {
+          const full = fullOf(b);
+          const ok = await Modal.show({
+            title: "删除绑定",
+            content: `删除上游 <b>${escapeHtml(full)}</b> 及其全部下游记录？`,
+            confirmText: "删除",
+            danger: true
+          });
+          if (!ok) return;
+          saveBindings(loadBindings().filter((x) => keyOf(fullOf(x)) !== keyOf(full)));
+          pickInitial();
+          renderRail();
+          renderDetail();
+          ctx.ui.toast("已删除");
+        };
+        const openMore = (anchor, b) => {
+          showMenu(anchor, [
+            { label: "添加其他下游…", onSelect: () => void promptAddDownstream(keyOf(fullOf(b))) },
+            { label: "删除绑定", danger: true, onSelect: () => void removeBinding(b) }
+          ]);
+        };
+        const openAbout = (anchor, b) => {
+          const key = keyOf(fullOf(b));
+          const about = state.about.get(key);
+          if (!about) return;
+          const last = state.lastCommit.get(key);
+          showAboutPopover({
+            about,
+            anchor,
+            extraMeta: [
+              ["最近推送", about.updatedAt ? `${formatDate(about.updatedAt)}（${relativeTime(about.updatedAt)}）` : "—"],
+              ["最后提交", last ? `${formatDate(last)}（${relativeTime(last)}）` : "—"]
+            ],
+            onClose: () => {
+              if (state.dirty) renderDetail();
+            }
+          });
+        };
+        const submitUpstream = () => {
+          const input = detail.querySelector("#ghtk-upstream-input");
+          const p = parseRepo(input ? input.value : state.draft);
+          if (!p) {
+            ctx.ui.toast("格式错误");
+            input?.focus();
+            return;
+          }
+          const list = loadBindings();
+          const key = keyOf(`${p.owner}/${p.repo}`);
+          if (list.some((b) => keyOf(fullOf(b)) === key)) {
+            ctx.ui.toast("已存在");
+          } else {
+            list.push({ owner: p.owner, repo: p.repo, downstreams: [], createdAt: Date.now() });
+            saveBindings(list);
+            ctx.ui.toast("已添加");
+          }
+          setSelected(key);
+          state.draft = "";
+          exitAddMode();
+        };
+        const bindCurrentAsDownstream = async () => {
+          const d = await detectionPromise;
+          if (d.state !== "fork" || !currentRepo) return;
+          const list = loadBindings();
+          const upKey = keyOf(d.upstream);
+          let up = list.find((x) => keyOf(fullOf(x)) === upKey);
+          if (!up) {
+            const [owner, repo] = d.upstream.split("/");
+            up = { owner, repo, downstreams: [], createdAt: Date.now() };
+            list.push(up);
+          }
+          up.downstreams = up.downstreams || [];
+          if (!up.downstreams.some((x) => keyOf(x) === curKey)) up.downstreams.push(currentRepo);
+          saveBindings(list);
+          setSelected(upKey);
+          if (state.addMode) exitAddMode(false);
+          renderRail();
+          renderDetail();
+          ctx.ui.toast("已绑定");
+        };
+        detail.addEventListener("click", (e) => {
+          const el = e.target.closest("[data-act]");
+          if (!el || !detail.contains(el)) return;
+          const b = findSelected();
+          switch (el.dataset.act) {
+            case "add-upstream":
+              enterAddMode("");
+              break;
+            case "copy":
+              if (b) copy(`https://github.com/${fullOf(b)}`);
+              break;
+            case "more":
+              if (b) openMore(el, b);
+              break;
+            case "about":
+              if (b) openAbout(el, b);
+              break;
+            case "bind-fork":
+              if (b) void bindMyFork(b);
+              break;
+            case "add-down":
+              if (b) void promptAddDownstream(keyOf(fullOf(b)));
+              break;
+            case "remove-down":
+              if (b && el.dataset.down) void removeDownstream(b, el.dataset.down);
+              break;
+            case "submit-upstream":
+              submitUpstream();
+              break;
+            case "bind-current":
+              void bindCurrentAsDownstream();
+              break;
+            case "cancel-add":
+              exitAddMode();
+              break;
           }
         });
-        pickDefault();
-        renderStatus();
+        detail.addEventListener("keydown", (e) => {
+          const t = e.target;
+          if (t.id === "ghtk-upstream-input" && e.key === "Enter" && !e.isComposing) {
+            e.preventDefault();
+            submitUpstream();
+          }
+        });
+        detail.addEventListener("input", (e) => {
+          const t = e.target;
+          if (t.id === "ghtk-upstream-input") state.draft = t.value;
+        });
+        curBtn.addEventListener("click", async () => {
+          const d = await detectionPromise;
+          if (d.state === "fork") {
+            await bindCurrentAsDownstream();
+            return;
+          }
+          enterAddMode(currentRepo);
+        });
+        addToggle.addEventListener("click", () => {
+          if (state.addMode) exitAddMode();
+          else enterAddMode("");
+        });
+        searchInput.value = viewMemory.query;
+        searchInput.addEventListener("input", () => {
+          viewMemory.query = searchInput.value;
+          renderRail();
+        });
+        pickInitial();
         renderRail();
         renderDetail();
-        if (page.owner && page.repo) {
-          state.status = { text: "检测中…" };
-          renderStatus();
-          detectUpstream(page).then((st) => {
-            state.status = st;
-            renderStatus();
+        if (currentRepo) {
+          void detectionPromise.then((d) => {
+            state.detection = d;
+            if (!root.isConnected) return;
+            renderRail();
             if (state.addMode) renderDetail();
           });
         }
       }
     }
   };
-  async function detectUpstream(page, currentUser) {
-    const owner = page.owner;
-    const repo = page.repo;
-    const info = await fetchRepoInfo(owner, repo);
-    if (!info) return { text: "检测失败", color: "#cf222e" };
-    const upstream = info.parent || info.source;
-    if (!info.fork || !upstream) return { text: "无上游" };
-    const currentFull = `${owner}/${repo}`;
-    const bindings = loadBindings();
-    const bound = bindings.some(
-      (b) => b.owner.toLowerCase() === upstream.owner.toLowerCase() && b.repo.toLowerCase() === upstream.repo.toLowerCase() && (b.downstreams || []).includes(currentFull)
-    );
-    return {
-      text: bound ? "已绑定" : "未绑定",
-      color: bound ? "#1a7f37" : void 0,
-      fullName: upstream.full_name,
-      owner: upstream.owner,
-      repo: upstream.repo,
-      bound
-    };
-  }
   const ACCEL_BASE_KEY = "accel-base-url";
   const EGO_IDENTITY_KEY = "ego-identity";
   const EGO_PROTOCOL_KEY = "ego-protocol";
   const DEFAULT_ACCEL_BASE = "https://github.akams.cn/";
+  const URL_RE = /^https?:\/\/[^\s"'<>]+$/i;
   function getAccelBase() {
-    return GM_getValue(ACCEL_BASE_KEY, DEFAULT_ACCEL_BASE);
+    const v = String(GM_getValue(ACCEL_BASE_KEY, DEFAULT_ACCEL_BASE) || "").trim();
+    return URL_RE.test(v) ? v : DEFAULT_ACCEL_BASE;
   }
-  function setAccelBase(url) {
-    GM_setValue(ACCEL_BASE_KEY, url);
-  }
-  function getEgoProtocol() {
+  function getProtocol() {
     return GM_getValue(EGO_PROTOCOL_KEY, "ssh") === "https" ? "https" : "ssh";
   }
-  function getEgoIdentity() {
-    return (GM_getValue(EGO_IDENTITY_KEY, "") || "").trim();
+  function getIdentity() {
+    return String(GM_getValue(EGO_IDENTITY_KEY, "") || "").trim();
+  }
+  function cloneUrl(owner, repo, protocol) {
+    return protocol === "ssh" ? `git@github.com:${owner}/${repo}.git` : `https://github.com/${owner}/${repo}.git`;
   }
   function buildCloneCommand(owner, repo, identity, protocol) {
-    const url = protocol === "ssh" ? `git@github.com:${owner}/${repo}.git` : `https://github.com/${owner}/${repo}.git`;
     const id = identity.trim();
+    const url = cloneUrl(owner, repo, protocol);
     return id ? `ego clone ${id} ${url}` : `git clone ${url}`;
+  }
+  function hostOf(url) {
+    try {
+      return new URL(url).host;
+    } catch {
+      return url;
+    }
+  }
+  function accelUrlOf(owner, repo) {
+    return `${getAccelBase()}?url=${encodeURIComponent(`https://github.com/${owner}/${repo}`)}`;
+  }
+  function hintHtml(hasIdentity) {
+    return hasIdentity ? "· 身份名需与本机 <code>ego users</code> 一致<br>· 复制后在本机终端执行，脚本无法直接运行命令" : "· 留空用 git clone，填 ego 身份名后改用 ego clone<br>· 复制后在本机终端执行，脚本无法直接运行命令";
   }
   const AccelPlugin = {
     id: "github-accel",
     name: "GitHub 加速 (akams)",
-    version: "1.0.2",
+    version: "1.1.0",
     description: "使用加速地址打开仓库，支持自定义加速服务地址",
     matches() {
       return true;
@@ -3374,130 +3363,145 @@ ${stateText}`;
       id: "accel",
       label: "加速",
       render() {
-        const accelBase = getAccelBase();
-        return `
-        <div class="ghtk-accel-setting">
-          <label>加速地址（默认 ${DEFAULT_ACCEL_BASE}）</label>
-          <div class="ghtk-form-row">
-            <input type="text" id="ghtk-accel-base" value="${accelBase}" placeholder="${DEFAULT_ACCEL_BASE}" />
-            <button class="ghtk-btn" id="ghtk-save-accel" type="button">保存</button>
-          </div>
-        </div>
-        <div class="ghtk-scroll-area ghtk-accel-body">
-          <div id="ghtk-accel-actions"></div>
-        </div>
-      `;
+        return `<div class="ghtk-scroll-area"><div class="ghtk-accel" id="ghtk-accel"></div></div>`;
       },
-      mount(ctx) {
-        renderAccelActions(ctx);
-        document.getElementById("ghtk-save-accel")?.addEventListener("click", () => {
-          const input = document.getElementById("ghtk-accel-base");
-          let val = (input?.value || "").trim();
-          if (!val) val = DEFAULT_ACCEL_BASE;
-          if (!val.endsWith("/")) val += "/";
-          setAccelBase(val);
-          ctx.ui.toast("已保存");
-          renderAccelActions(ctx);
-        });
+      mount(ctx, root) {
+        const box = root.querySelector("#ghtk-accel");
+        if (!box) return;
+        renderAccel(ctx, box, false);
+        bindAccel(ctx, box);
       }
     }
   };
-  function renderAccelActions(ctx) {
-    const container = document.getElementById("ghtk-accel-actions");
-    if (!container) return;
-    const page = ctx.page;
-    if (!page.owner || !page.repo) {
-      container.innerHTML = `<div class="ghtk-empty">进入仓库后可用</div>`;
-      return;
-    }
-    const owner = page.owner;
-    const repo = page.repo;
+  function renderAccel(ctx, box, settingsOpen) {
     const base = getAccelBase();
-    const repoUrl = `https://github.com/${owner}/${repo}`;
-    const accelUrl = `${base}?url=${encodeURIComponent(repoUrl)}`;
-    const identity = getEgoIdentity();
-    const protocol = getEgoProtocol();
-    const command = buildCloneCommand(owner, repo, identity, protocol);
-    container.innerHTML = `
-    <div class="ghtk-accel-repo">
-      <div class="ghtk-sec-label">当前仓库加速地址</div>
-      <div class="ghtk-accel-url">${accelUrl}</div>
-      <div class="ghtk-btn-row">
-        <a class="ghtk-btn primary" href="${accelUrl}" target="_blank">加速打开</a>
-        <button class="ghtk-btn" id="ghtk-copy-accel" type="button">复制</button>
-      </div>
-    </div>
-
-    <div class="ghtk-divider"></div>
-
-    <div class="ghtk-ego">
-      <div class="ghtk-ego-head">
-        <div class="ghtk-ego-title">克隆命令</div>
-        <div class="ghtk-seg" id="ghtk-ego-proto">
-          <button type="button" data-proto="ssh" class="${protocol === "ssh" ? "on" : ""}">SSH</button>
-          <button type="button" data-proto="https" class="${protocol === "https" ? "on" : ""}">HTTPS</button>
+    const settings = `
+    <details class="ghtk-settings"${settingsOpen ? " open" : ""}>
+      <summary>加速服务<span class="ghtk-settings-value">${escapeHtml(hostOf(base))}</span>${ICON.chevron}</summary>
+      <div class="ghtk-settings-body">
+        <label class="ghtk-field-label" for="ghtk-accel-base">加速地址（默认 ${escapeHtml(DEFAULT_ACCEL_BASE)}）</label>
+        <div class="ghtk-field-row">
+          <input class="ghtk-input" type="text" id="ghtk-accel-base" value="${escapeHtml(base)}"
+            placeholder="${escapeHtml(DEFAULT_ACCEL_BASE)}" autocomplete="off" spellcheck="false" />
+          <button class="ghtk-btn" type="button" data-act="save-base">保存</button>
         </div>
       </div>
-
-      <input class="ghtk-field-input" type="text" id="ghtk-ego-identity"
-        value="${identity.replace(/"/g, "&quot;")}" placeholder="ego 身份名（留空用 git）" autocomplete="off" spellcheck="false" />
-
-      <div class="ghtk-cmd-wrap">
-        <div class="ghtk-cmd" id="ghtk-ego-cmd"><span class="ghtk-cmd-prompt">$</span>${escapeHtml(command)}</div>
-      </div>
-
-      <button class="ghtk-btn" id="ghtk-copy-ego" type="button">复制命令</button>
-
-      <div class="ghtk-hint-list" id="ghtk-ego-hint">${hintHtml(!!identity)}</div>
-    </div>
-  `;
-    document.getElementById("ghtk-copy-accel")?.addEventListener("click", () => {
-      navigator.clipboard.writeText(`${getAccelBase()}?url=${encodeURIComponent(repoUrl)}`).then(() => ctx.ui.toast("已复制")).catch(() => ctx.ui.toast("复制失败"));
-    });
-    const identityInput = document.getElementById("ghtk-ego-identity");
-    const cmdEl = document.getElementById("ghtk-ego-cmd");
-    const hintEl = document.getElementById("ghtk-ego-hint");
-    const refreshCommand = () => {
-      const id = identityInput?.value.trim() || "";
-      if (cmdEl) {
-        const next = buildCloneCommand(owner, repo, id, getEgoProtocol());
-        cmdEl.innerHTML = `<span class="ghtk-cmd-prompt">$</span>${escapeHtml(next)}`;
-      }
-      if (hintEl) hintEl.innerHTML = hintHtml(!!id);
-    };
-    identityInput?.addEventListener("input", () => {
-      GM_setValue(EGO_IDENTITY_KEY, identityInput.value);
-      refreshCommand();
-    });
-    document.querySelectorAll("#ghtk-ego-proto button").forEach((btn) => {
-      btn.addEventListener("click", () => {
-        const proto = btn.dataset.proto || "ssh";
-        GM_setValue(EGO_PROTOCOL_KEY, proto);
-        document.querySelectorAll("#ghtk-ego-proto button").forEach((b) => {
-          b.classList.toggle("on", b === btn);
-        });
-        refreshCommand();
-      });
-    });
-    document.getElementById("ghtk-copy-ego")?.addEventListener("click", () => {
-      const cmd = buildCloneCommand(owner, repo, identityInput?.value.trim() || "", getEgoProtocol());
-      navigator.clipboard.writeText(cmd).then(() => ctx.ui.toast("已复制")).catch(() => ctx.ui.toast("复制失败"));
-    });
-  }
-  function escapeHtml(s) {
-    return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
-  }
-  function hintHtml(hasIdentity) {
-    if (hasIdentity) {
-      return `· 使用 ego 按身份克隆，身份名需与本机 <code>ego users</code> 一致<br>
-            · 在本机终端执行，脚本无法直接运行命令`;
+    </details>`;
+    const { owner, repo } = ctx.page;
+    if (!owner || !repo) {
+      box.innerHTML = `<div class="ghtk-blank">进入仓库页面后可用</div>${settings}`;
+      return;
     }
-    return `· 未填身份名，使用普通 git 克隆<br>
-          · 填入 ego 身份名后自动改用 ego 命令`;
+    const accelUrl = accelUrlOf(owner, repo);
+    const identity = getIdentity();
+    const protocol = getProtocol();
+    box.innerHTML = `
+    <section class="ghtk-accel-sec">
+      <div class="ghtk-sec-head">
+        <span class="ghtk-sec-title">加速访问</span>
+        <span class="ghtk-sec-note" title="${escapeHtml(accelUrl)}">经 ${escapeHtml(hostOf(base))} 中转</span>
+      </div>
+      <div class="ghtk-btn-row">
+        <a class="ghtk-btn primary" href="${escapeHtml(accelUrl)}" target="_blank" rel="noreferrer" title="${escapeHtml(accelUrl)}">加速打开</a>
+        <button class="ghtk-btn" type="button" data-act="copy-accel">复制链接</button>
+      </div>
+    </section>
+    <section class="ghtk-accel-sec">
+      <div class="ghtk-sec-head">
+        <span class="ghtk-sec-title">克隆命令</span>
+        <div class="ghtk-seg" role="group" aria-label="克隆协议">
+          <button type="button" data-proto="ssh" class="${protocol === "ssh" ? "on" : ""}" aria-pressed="${protocol === "ssh"}">SSH</button>
+          <button type="button" data-proto="https" class="${protocol === "https" ? "on" : ""}" aria-pressed="${protocol === "https"}">HTTPS</button>
+        </div>
+      </div>
+      <input class="ghtk-input" type="text" id="ghtk-ego-identity" value="${escapeHtml(identity)}"
+        placeholder="ego 身份名（留空用 git）" aria-label="ego 身份名" autocomplete="off" spellcheck="false" />
+      <div class="ghtk-cmd" tabindex="0" aria-label="克隆命令"><span class="ghtk-cmd-prompt">$</span><span id="ghtk-ego-cmd">${escapeHtml(
+    buildCloneCommand(owner, repo, identity, protocol)
+  )}</span></div>
+      <div class="ghtk-btn-row">
+        <button class="ghtk-btn" type="button" data-act="copy-cmd">复制命令</button>
+        <button class="ghtk-btn" type="button" data-act="copy-url">复制地址</button>
+      </div>
+      <div class="ghtk-hint" id="ghtk-ego-hint">${hintHtml(!!identity)}</div>
+    </section>
+    ${settings}
+  `;
+  }
+  function bindAccel(ctx, box) {
+    const currentRepo = () => {
+      const { owner, repo } = ctx.page;
+      return owner && repo ? { owner, repo } : null;
+    };
+    const identityValue = () => box.querySelector("#ghtk-ego-identity")?.value.trim() ?? getIdentity();
+    const copy = (text) => {
+      void copyText(text).then((ok) => ctx.ui.toast(ok ? "已复制" : "复制失败"));
+    };
+    const refreshCmd = () => {
+      const r = currentRepo();
+      if (!r) return;
+      const id = identityValue();
+      const cmd = box.querySelector("#ghtk-ego-cmd");
+      if (cmd) cmd.textContent = buildCloneCommand(r.owner, r.repo, id, getProtocol());
+      const hint = box.querySelector("#ghtk-ego-hint");
+      if (hint) hint.innerHTML = hintHtml(!!id);
+    };
+    const saveBase = () => {
+      const input = box.querySelector("#ghtk-accel-base");
+      let val = (input?.value || "").trim() || DEFAULT_ACCEL_BASE;
+      if (!URL_RE.test(val)) {
+        ctx.ui.toast("地址无效");
+        input?.focus();
+        return;
+      }
+      if (!val.endsWith("/")) val += "/";
+      GM_setValue(ACCEL_BASE_KEY, val);
+      renderAccel(ctx, box, true);
+      ctx.ui.toast("已保存");
+    };
+    box.addEventListener("click", (e) => {
+      const t = e.target;
+      const proto = t.closest("[data-proto]");
+      if (proto) {
+        const p = proto.dataset.proto === "https" ? "https" : "ssh";
+        GM_setValue(EGO_PROTOCOL_KEY, p);
+        box.querySelectorAll("[data-proto]").forEach((b) => {
+          const on = b === proto;
+          b.classList.toggle("on", on);
+          b.setAttribute("aria-pressed", String(on));
+        });
+        refreshCmd();
+        return;
+      }
+      const act = t.closest("[data-act]")?.dataset.act;
+      if (act === "save-base") {
+        saveBase();
+        return;
+      }
+      const r = currentRepo();
+      if (!r) return;
+      if (act === "copy-accel") copy(accelUrlOf(r.owner, r.repo));
+      else if (act === "copy-cmd") copy(buildCloneCommand(r.owner, r.repo, identityValue(), getProtocol()));
+      else if (act === "copy-url") copy(cloneUrl(r.owner, r.repo, getProtocol()));
+    });
+    box.addEventListener("input", (e) => {
+      const t = e.target;
+      if (t.id !== "ghtk-ego-identity") return;
+      GM_setValue(EGO_IDENTITY_KEY, t.value);
+      refreshCmd();
+    });
+    box.addEventListener("keydown", (e) => {
+      const t = e.target;
+      if (t.id === "ghtk-accel-base" && e.key === "Enter" && !e.isComposing) {
+        e.preventDefault();
+        saveBase();
+      }
+    });
   }
   const builtinPlugins = [UpstreamBindPlugin, AccelPlugin];
   const DEFAULT_ENABLED = ["upstream-bind", "github-accel"];
-  const TOOLKIT_VERSION = "2.8.1";
+  const TOOLKIT_VERSION = "2.9.0";
+  const TAB_KEY = "panel-tab";
   const eventBus = new EventBus();
   const dom = new DOMHelper();
   const ui = new UIManager();
@@ -3511,43 +3515,72 @@ ${stateText}`;
       await pluginManager.enable(id);
     }
   })();
+  const rerenderIfOpen = () => {
+    if (ui.panel) renderPanel();
+  };
   eventBus.on("page:change", (page) => {
     pluginManager.onPageChange(page);
-    if (ui.panel) renderPanel();
+    if (ui.panel) whenIdle(rerenderIfOpen);
   });
   function renderPanel() {
     try {
       const page = router.current;
       const pluginTabs = pluginManager.getAll().filter((p) => pluginManager.isEnabled(p.id) && p.panelTab);
-      const tabsHtml = pluginTabs.map((p) => `<button class="ghtk-tab" data-tab="${p.panelTab.id}" type="button">${p.panelTab.label}</button>`).join("") + `<button class="ghtk-tab" data-tab="plugins" type="button">插件</button>`;
-      const defaultTab = pluginTabs[0]?.panelTab?.id ?? "plugins";
-      const contentsHtml = pluginTabs.map(
-        (p) => `
-        <div class="ghtk-tab-content ${p.panelTab.id === defaultTab ? "active" : ""}" data-content="${p.panelTab.id}">
-        </div>
-      `
-      ).join("");
-      const contentHtml = `
-      <div class="ghtk-tabs">${tabsHtml}</div>
-      ${contentsHtml}
-      <div class="ghtk-tab-content ${defaultTab === "plugins" ? "active" : ""}" data-content="plugins">
-        <div class="ghtk-scroll-area" id="ghtk-plugins-list" style="padding-top:16px;"></div>
+      const ids = [...pluginTabs.map((p) => p.panelTab.id), "plugins"];
+      const saved = String(GM_getValue(TAB_KEY, "") || "");
+      const activeId = ids.includes(saved) ? saved : ids[0];
+      const tabBtn = (id, label) => {
+        const on = id === activeId;
+        return `<button class="ghtk-tab${on ? " active" : ""}" type="button" role="tab" id="ghtk-tab-${id}"
+        data-tab="${id}" aria-controls="ghtk-tabpanel-${id}" aria-selected="${on}" tabindex="${on ? "0" : "-1"}">${escapeHtml(label)}</button>`;
+      };
+      const tabPanel = (id, inner = "") => {
+        const on = id === activeId;
+        return `<div class="ghtk-tab-content${on ? " active" : ""}" role="tabpanel" id="ghtk-tabpanel-${id}"
+        aria-labelledby="ghtk-tab-${id}" data-content="${id}">${inner}</div>`;
+      };
+      const html = `
+      <div class="ghtk-tabs" role="tablist" aria-label="功能">
+        ${pluginTabs.map((p) => tabBtn(p.panelTab.id, p.panelTab.label)).join("")}
+        ${tabBtn("plugins", "插件")}
       </div>
+      ${pluginTabs.map((p) => tabPanel(p.panelTab.id)).join("")}
+      ${tabPanel("plugins", '<div class="ghtk-scroll-area"><div class="ghtk-plugins" id="ghtk-plugins-list"></div></div>')}
     `;
-      ui.showPanel(contentHtml, `GitHub Toolkit v${TOOLKIT_VERSION}`);
-      document.querySelectorAll(".ghtk-tab").forEach((tab) => {
-        if (tab.dataset.tab === defaultTab) tab.classList.add("active");
-        tab.addEventListener("click", () => {
-          const name = tab.dataset.tab;
-          document.querySelectorAll(".ghtk-tab").forEach((t) => t.classList.remove("active"));
-          document.querySelectorAll(".ghtk-tab-content").forEach((c) => c.classList.remove("active"));
-          tab.classList.add("active");
-          document.querySelector(`.ghtk-tab-content[data-content="${name}"]`)?.classList.add("active");
+      ui.showPanel(html, "GitHub Toolkit");
+      const panel = ui.panel;
+      if (!panel) return;
+      const tabs = Array.from(panel.querySelectorAll(".ghtk-tab"));
+      const activate = (tab, focus = false) => {
+        const id = tab.dataset.tab;
+        tabs.forEach((t) => {
+          const on = t === tab;
+          t.classList.toggle("active", on);
+          t.setAttribute("aria-selected", String(on));
+          t.tabIndex = on ? 0 : -1;
+        });
+        panel.querySelectorAll(".ghtk-tab-content").forEach((c) => {
+          c.classList.toggle("active", c.dataset.content === id);
+        });
+        GM_setValue(TAB_KEY, id);
+        if (focus) tab.focus();
+      };
+      tabs.forEach((tab, i) => {
+        tab.addEventListener("click", () => activate(tab));
+        tab.addEventListener("keydown", (e) => {
+          let next;
+          if (e.key === "ArrowRight") next = (i + 1) % tabs.length;
+          else if (e.key === "ArrowLeft") next = (i - 1 + tabs.length) % tabs.length;
+          else if (e.key === "Home") next = 0;
+          else if (e.key === "End") next = tabs.length - 1;
+          else return;
+          e.preventDefault();
+          activate(tabs[next], true);
         });
       });
       for (const p of pluginTabs) {
         const tab = p.panelTab;
-        const root = document.querySelector(`.ghtk-tab-content[data-content="${tab.id}"]`);
+        const root = panel.querySelector(`.ghtk-tab-content[data-content="${tab.id}"]`);
         if (!root) continue;
         const ctx = pluginManager.getContext(p.id) ?? {
           eventBus,
@@ -3560,31 +3593,30 @@ ${stateText}`;
         root.innerHTML = tab.render(ctx);
         tab.mount?.(ctx, root);
       }
-      renderPluginsList();
+      renderPluginsList(panel);
     } catch (err) {
       Logger.error("renderPanel 失败:", err);
       ui.toast("面板渲染失败");
     }
   }
-  function renderPluginsList() {
-    const container = document.getElementById("ghtk-plugins-list");
+  function renderPluginsList(panel) {
+    const container = panel.querySelector("#ghtk-plugins-list");
     if (!container) return;
-    const plugins = pluginManager.getAll();
-    container.innerHTML = plugins.map((p) => {
+    container.innerHTML = pluginManager.getAll().map((p) => {
       const on = pluginManager.isEnabled(p.id);
+      const nameId = `ghtk-plugin-name-${p.id}`;
       return `
-        <div class="ghtk-plugin-item">
-          <div style="min-width:0;">
-            <strong style="font-size:13px;">${p.name}</strong>
-            <div class="desc">${p.description || ""}</div>
-          </div>
-          <button class="ghtk-switch ${on ? "on" : ""}" data-id="${p.id}" type="button"
-            role="switch" aria-checked="${on}" title="${on ? "禁用" : "启用"}">
-            <span class="ghtk-switch-knob"></span>
-          </button>
-        </div>
-      `;
-    }).join("");
+          <div class="ghtk-plugin-item">
+            <div class="ghtk-plugin-text">
+              <div class="ghtk-plugin-name" id="${escapeHtml(nameId)}">${escapeHtml(p.name)}</div>
+              <div class="ghtk-plugin-desc">${escapeHtml(p.description || "")}</div>
+            </div>
+            <button class="ghtk-switch${on ? " on" : ""}" type="button" role="switch" aria-checked="${on}"
+              aria-labelledby="${escapeHtml(nameId)}" data-id="${escapeHtml(p.id)}" title="${on ? "点击禁用" : "点击启用"}">
+              <span class="ghtk-switch-knob"></span>
+            </button>
+          </div>`;
+    }).join("") + `<div class="ghtk-plugins-foot">GitHub Toolkit v${TOOLKIT_VERSION}</div>`;
     container.querySelectorAll(".ghtk-switch[data-id]").forEach((sw) => {
       sw.addEventListener("click", async () => {
         const id = sw.dataset.id;
@@ -3598,20 +3630,19 @@ ${stateText}`;
         }
         GM_setValue("enabled-plugins", enabledList);
         ui.toast(turningOn ? "已启用" : "已禁用");
-        setTimeout(renderPanel, 150);
+        setTimeout(() => {
+          renderPanel();
+          ui.panel?.querySelector(`.ghtk-switch[data-id="${CSS.escape(id)}"]`)?.focus({ preventScroll: true });
+        }, 150);
       });
     });
   }
   ui.onFabToggle = () => {
-    if (ui.panel) {
-      ui.hidePanel();
-    } else {
-      renderPanel();
-    }
+    if (ui.panel) ui.hidePanel();
+    else renderPanel();
   };
   ui.onCloudClick = () => {
-    const ok = openCloudPanel();
-    if (!ok) ui.toast("云端组件未加载");
+    if (!openCloudPanel()) ui.toast("云端组件未加载");
   };
   GM_registerMenuCommand("打开 GitHub Toolkit 面板", renderPanel);
   function ensureFab() {
@@ -3627,11 +3658,9 @@ ${stateText}`;
     ui.createFab();
     bindSoftNav();
     ["turbo:load", "turbo:render", "pjax:end", "soft-nav:end"].forEach((evt) => {
-      document.addEventListener(evt, () => {
-        ensureFab();
-      });
+      document.addEventListener(evt, ensureFab);
     });
-    Logger.log(`GitHub Toolkit v${TOOLKIT_VERSION} 已启动（图标操作 + 复制链接）`);
+    Logger.log(`GitHub Toolkit v${TOOLKIT_VERSION} 已启动`);
   }
   init();
 

@@ -2,1452 +2,1102 @@
  * GitHub Toolkit 样式表。
  *
  * 隔离策略（避免与 GitHub 自身或其它用户脚本的样式互相污染）：
- * 1. 所有类名统一 `ghtk-` 前缀；
- * 2. 尺寸变量定义在 `#ghtk-root` 作用域内，不写 `:root`，不污染全局；
- * 3. 样式表带唯一 id，注入后校验存在性，被页面移除时自动补回；
- * 4. 根容器做最小化 reset，抵御 GitHub 全局样式（按钮/输入框/链接）的侵入；
- * 5. 关键属性带 `!important`，防止被页面样式覆盖。
+ * 1. 所有类名统一 `ghtk-` 前缀，所有 DOM 挂在 `#ghtk-root` 下；
+ * 2. token 只定义在 `#ghtk-root` 作用域内，不写 `:root`；
+ * 3. 颜色一律取 GitHub Primer 主题变量（括号里是亮色兜底），亮/暗色自动跟随；
+ * 4. reset 用 `:where()` 包裹，特异性为 0，组件类总能覆盖它；
+ * 5. 构建时由 `important()` 给每条声明补 `!important`，压过 GitHub 全局样式；
+ * 6. 样式表带唯一 id，注入后被页面移除时自动补回。
+ *
+ * 注意：CSS 写在模板字符串里，注释中不能出现反引号或美元符加花括号。
  */
 const STYLE_ID = 'ghtk-style-v1';
 const ROOT_ID = 'ghtk-root';
 
-const CSS = `
-  /* ===== 尺寸 token：作用域限定在 #ghtk-root 内，不污染页面 ===== */
+const CSS_SOURCE = `
+  /* ===== token ===== */
   #ghtk-root {
-    --ghtk-ctl-h: 30px;        /* 控件统一高度：按钮 / 输入框 / 图标按钮 */
-    --ghtk-ctl-radius: 6px;    /* 控件统一圆角 */
-    --ghtk-ctl-font: 12px;     /* 控件统一字号 */
-    --ghtk-ctl-gap: 8px;       /* 控件间距 */
-    --ghtk-icon: 14px;         /* 图标统一尺寸 */
-    --ghtk-gap: 8px;           /* 区块内部垂直间距 */
-    --ghtk-gap-lg: 12px;       /* 区块之间分隔间距 */
-    --ghtk-fs-label: 12px;     /* 区块小标题 / 字段标签 */
-    --ghtk-fs-small: 10.5px;   /* 辅助说明 / 分段控件文字 */
-    --ghtk-fs-mono: 11px;      /* 等宽内容（地址 / 命令） */
+    --ghtk-ctl-h: 30px;
+    --ghtk-ctl-radius: 6px;
+    --ghtk-ctl-font: 12px;
+    --ghtk-icon: 14px;
+    --ghtk-gap: 8px;
+    --ghtk-gap-lg: 12px;
+    --ghtk-fs-title: 14px;
+    --ghtk-fs-name: 13px;
+    --ghtk-fs-body: 12px;
+    --ghtk-fs-small: 11px;
+    --ghtk-font: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans", Helvetica, Arial, sans-serif;
+    --ghtk-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+
+    --ghtk-bg: var(--bgColor-default, #ffffff);
+    --ghtk-bg-muted: var(--bgColor-muted, #f6f8fa);
+    --ghtk-bg-inset: var(--bgColor-inset, #f6f8fa);
+    --ghtk-bg-neutral: var(--bgColor-neutral-muted, rgba(129, 139, 152, 0.12));
+    --ghtk-bg-hover: var(--control-bgColor-hover, #eff2f5);
+    --ghtk-bg-emphasis: var(--bgColor-emphasis, #25292e);
+    --ghtk-fg: var(--fgColor-default, #1f2328);
+    --ghtk-fg-muted: var(--fgColor-muted, #59636e);
+    --ghtk-fg-on-emphasis: var(--fgColor-onEmphasis, #ffffff);
+    --ghtk-border: var(--borderColor-default, #d1d9e0);
+    --ghtk-border-muted: var(--borderColor-muted, rgba(209, 217, 224, 0.7));
+    --ghtk-accent: var(--fgColor-accent, #0969da);
+    --ghtk-accent-bg: var(--bgColor-accent-muted, #ddf4ff);
+    --ghtk-accent-border: var(--borderColor-accent-muted, rgba(84, 174, 255, 0.4));
+    --ghtk-accent-emphasis: var(--bgColor-accent-emphasis, #0969da);
+    --ghtk-danger: var(--fgColor-danger, #d1242f);
+    --ghtk-danger-bg: var(--bgColor-danger-muted, #ffebe9);
+    --ghtk-danger-emphasis: var(--bgColor-danger-emphasis, #cf222e);
+    --ghtk-knob: var(--fgColor-onEmphasis, #ffffff);
+    --ghtk-focus: var(--focus-outlineColor, #0969da);
+    --ghtk-shadow: var(--shadow-floating-large, 0 0 0 1px rgba(209, 217, 224, 0.5), 0 24px 48px rgba(37, 41, 46, 0.2));
+    --ghtk-shadow-sm: var(--shadow-floating-small, 0 0 0 1px rgba(209, 217, 224, 0.5), 0 6px 18px rgba(37, 41, 46, 0.14));
+    --ghtk-backdrop: rgba(31, 35, 40, 0.28);
   }
 
-  /* ===== 根容器 reset：抵御 GitHub 全局样式侵入 ===== */
-  #ghtk-root,
-  #ghtk-root * {
-    box-sizing: border-box !important;
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans", Helvetica, Arial, sans-serif !important;
-    -webkit-font-smoothing: antialiased !important;
-    letter-spacing: normal !important;
-    text-transform: none !important;
-    text-shadow: none !important;
-    float: none !important;
-    outline: none !important;
+  /* ===== reset（零特异性） ===== */
+  :where(#ghtk-root),
+  :where(#ghtk-root) * {
+    box-sizing: border-box;
+    font-family: var(--ghtk-font);
+    -webkit-font-smoothing: antialiased;
+    letter-spacing: normal;
+    text-transform: none;
+    text-shadow: none;
+    float: none;
   }
-  #ghtk-root button,
-  #ghtk-root input {
-    margin: 0 !important;
-    font-size: var(--ghtk-ctl-font) !important;
-    line-height: 1 !important;
-    vertical-align: middle !important;
-    appearance: none !important;
-    -webkit-appearance: none !important;
+  :where(#ghtk-root) :where(button, input, textarea, select) {
+    margin: 0;
+    font-size: var(--ghtk-ctl-font);
+    line-height: 1;
+    color: inherit;
+    vertical-align: middle;
+    appearance: none;
+    -webkit-appearance: none;
   }
-  #ghtk-root a { text-decoration: none !important; }
-  #ghtk-root svg {
-    display: block !important;
-    flex-shrink: 0 !important;
-  }
-  #ghtk-root ::-webkit-scrollbar { width: 6px !important; height: 6px !important; }
-  #ghtk-root ::-webkit-scrollbar-thumb {
-    background: var(--borderColor-default, #d0d7de) !important;
-    border-radius: 3px !important;
-  }
-  #ghtk-root ::-webkit-scrollbar-track { background: transparent !important; }
+  :where(#ghtk-root) :where(a) { text-decoration: none; }
+  :where(#ghtk-root) :where(svg) { display: block; flex-shrink: 0; fill: currentColor; }
+  :where(#ghtk-root) :where(code, .ghtk-cmd, .ghtk-cmd *) { font-family: var(--ghtk-mono); }
+  #ghtk-root [hidden] { display: none; }
 
+  /* ===== 焦点：鼠标点击不出框，键盘操作显示焦点框 ===== */
+  :where(#ghtk-root) :focus { outline: none; }
+  :where(#ghtk-root) :focus-visible {
+    outline: 2px solid var(--ghtk-focus);
+    outline-offset: 2px;
+  }
+  #ghtk-root .ghtk-tab:focus-visible,
+  #ghtk-root .ghtk-rail-item:focus-visible,
+  #ghtk-root .ghtk-menu-item:focus-visible,
+  #ghtk-root .ghtk-settings > summary:focus-visible,
+  #ghtk-root .ghtk-cmd:focus-visible {
+    outline-offset: -2px;
+  }
+  #ghtk-root .ghtk-input:focus,
+  #ghtk-root .ghtk-modal-input:focus {
+    border-color: var(--ghtk-focus);
+    outline: 2px solid var(--ghtk-focus);
+    outline-offset: -1px;
+  }
+  #ghtk-root .ghtk-search:focus-within {
+    border-color: var(--ghtk-focus);
+    box-shadow: inset 0 0 0 1px var(--ghtk-focus);
+  }
+  #ghtk-root .ghtk-search input:focus { outline: none; }
+
+  #ghtk-root ::-webkit-scrollbar { width: 6px; height: 6px; }
+  #ghtk-root ::-webkit-scrollbar-thumb { background: var(--ghtk-border); border-radius: 3px; }
+  #ghtk-root ::-webkit-scrollbar-track { background: transparent; }
+
+  /* ===== 悬浮球 ===== */
   .ghtk-fab {
-    position: fixed !important;
-    right: 20px !important;
-    bottom: 24px !important;
-    width: 48px !important;
-    height: 48px !important;
-    border-radius: 50% !important;
-    background: #24292f !important;
-    color: #fff !important;
-    border: none !important;
-    box-shadow: 0 4px 16px rgba(0,0,0,.28) !important;
-    cursor: grab !important;
-    z-index: 2147483646 !important;
-    display: flex !important;
-    align-items: center !important;
-    justify-content: center !important;
-    transition: transform .15s ease, box-shadow .15s ease !important;
-    padding: 0 !important;
-    margin: 0 !important;
-    touch-action: none !important;
-    user-select: none !important;
-    -webkit-user-select: none !important;
+    position: fixed;
+    right: 20px;
+    bottom: 24px;
+    width: 48px;
+    height: 48px;
+    padding: 0;
+    border: none;
+    border-radius: 50%;
+    background: var(--ghtk-bg-emphasis);
+    color: var(--ghtk-fg-on-emphasis);
+    box-shadow: 0 4px 16px rgba(1, 4, 9, 0.28);
+    cursor: grab;
+    z-index: 2147483641;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    touch-action: none;
+    transition: transform .15s ease, box-shadow .15s ease;
   }
-  .ghtk-fab:hover {
-    transform: scale(1.08) !important;
-    box-shadow: 0 6px 20px rgba(0,0,0,.35) !important;
+  .ghtk-fab:hover { transform: translateY(-1px); box-shadow: 0 6px 20px rgba(1, 4, 9, 0.34); }
+  .ghtk-fab:active { cursor: grabbing; }
+  .ghtk-fab svg { width: 20px; height: 20px; }
+
+  /* ===== 面板 ===== */
+  .ghtk-panel {
+    position: fixed;
+    right: 20px;
+    bottom: 84px;
+    width: 400px;
+    height: 560px;
+    max-width: calc(100vw - 16px);
+    max-height: calc(100vh - 16px);
+    display: flex;
+    flex-direction: column;
+    background: var(--ghtk-bg);
+    color: var(--ghtk-fg);
+    border: 1px solid var(--ghtk-border);
+    border-radius: 14px;
+    box-shadow: var(--ghtk-shadow);
+    overflow: hidden;
+    z-index: 2147483640;
+    font-size: var(--ghtk-fs-body);
+    line-height: 1.5;
   }
-  .ghtk-fab.dragging {
-    cursor: grabbing !important;
-    transform: scale(1.04) !important;
-    transition: none !important;
-    box-shadow: 0 8px 24px rgba(0,0,0,.4) !important;
+  .ghtk-panel-head {
+    flex: 0 0 44px;
+    height: 44px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--ghtk-gap);
+    padding: 0 8px 0 16px;
+    background: var(--ghtk-bg-muted);
+    border-bottom: 1px solid var(--ghtk-border);
+    cursor: move;
+    user-select: none;
   }
-  .ghtk-fab svg {
-    width: 22px !important;
-    height: 22px !important;
-    fill: currentColor !important;
-    pointer-events: none !important;
+  .ghtk-panel-title {
+    min-width: 0;
+    font-size: var(--ghtk-fs-name);
+    font-weight: 600;
+    color: var(--ghtk-fg);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .ghtk-head-actions { display: flex; align-items: center; gap: 2px; }
+  .ghtk-panel-body { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+
+  /* ===== 图标按钮（30x30 热区） ===== */
+  .ghtk-icon-btn {
+    width: var(--ghtk-ctl-h);
+    height: var(--ghtk-ctl-h);
+    flex: 0 0 var(--ghtk-ctl-h);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    border: 1px solid transparent;
+    border-radius: var(--ghtk-ctl-radius);
+    background: transparent;
+    color: var(--ghtk-fg-muted);
+    cursor: pointer;
+    transition: background .12s, color .12s;
+  }
+  .ghtk-icon-btn:hover { background: var(--ghtk-bg-neutral); color: var(--ghtk-fg); }
+  .ghtk-icon-btn[aria-expanded="true"] { background: var(--ghtk-bg-neutral); color: var(--ghtk-fg); }
+  .ghtk-icon-btn svg { width: var(--ghtk-icon); height: var(--ghtk-icon); }
+  .ghtk-stroke { fill: none; stroke: currentColor; }
+
+  /* ===== Tab ===== */
+  .ghtk-tabs {
+    flex: 0 0 auto;
+    display: flex;
+    padding: 0 8px;
+    border-bottom: 1px solid var(--ghtk-border);
+  }
+  .ghtk-tab {
+    flex: 1;
+    height: 36px;
+    padding: 0 8px;
+    border: none;
+    border-bottom: 2px solid transparent;
+    margin-bottom: -1px;
+    background: transparent;
+    color: var(--ghtk-fg-muted);
+    font-size: var(--ghtk-fs-body);
+    cursor: pointer;
+  }
+  .ghtk-tab:hover { color: var(--ghtk-fg); }
+  .ghtk-tab.active {
+    color: var(--ghtk-accent);
+    font-weight: 600;
+    border-bottom-color: var(--ghtk-accent-emphasis);
+  }
+  .ghtk-tab-content { display: none; flex: 1; min-height: 0; flex-direction: column; }
+  .ghtk-tab-content.active { display: flex; }
+  .ghtk-scroll-area { flex: 1; min-height: 0; overflow-y: auto; }
+
+  /* ===== 按钮 ===== */
+  .ghtk-btn {
+    height: var(--ghtk-ctl-h);
+    min-width: 76px;
+    padding: 0 12px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    border: 1px solid var(--ghtk-border);
+    border-radius: var(--ghtk-ctl-radius);
+    background: var(--ghtk-bg-muted);
+    color: var(--ghtk-fg);
+    font-size: var(--ghtk-ctl-font);
+    font-weight: 500;
+    line-height: 1;
+    white-space: nowrap;
+    text-decoration: none;
+    cursor: pointer;
+    transition: background .12s, border-color .12s;
+  }
+  .ghtk-btn:hover { background: var(--ghtk-bg-hover); }
+  .ghtk-btn.primary {
+    background: var(--ghtk-accent-emphasis);
+    border-color: transparent;
+    color: var(--ghtk-fg-on-emphasis);
+    font-weight: 600;
+  }
+  .ghtk-btn.primary:hover { background: color-mix(in srgb, var(--ghtk-accent-emphasis) 88%, #000000); }
+  .ghtk-btn.danger-solid {
+    background: var(--ghtk-danger-emphasis);
+    border-color: transparent;
+    color: var(--ghtk-fg-on-emphasis);
+    font-weight: 600;
+  }
+  .ghtk-btn.danger-solid:hover { background: color-mix(in srgb, var(--ghtk-danger-emphasis) 88%, #000000); }
+  .ghtk-btn:disabled { opacity: .6; cursor: default; }
+  .ghtk-btn[aria-busy="true"] { opacity: .7; cursor: progress; pointer-events: none; }
+  .ghtk-btn.block { width: 100%; }
+  .ghtk-btn-row { display: flex; gap: var(--ghtk-gap); }
+  .ghtk-btn-row > .ghtk-btn { flex: 1; min-width: 0; }
+  .ghtk-spinner {
+    width: 12px;
+    height: 12px;
+    flex: 0 0 12px;
+    border: 2px solid currentColor;
+    border-right-color: transparent;
+    border-radius: 50%;
+    animation: ghtk-spin .7s linear infinite;
   }
 
+  /* ===== 输入框 ===== */
+  .ghtk-input,
+  .ghtk-modal-input {
+    width: 100%;
+    height: var(--ghtk-ctl-h);
+    padding: 0 10px;
+    border: 1px solid var(--ghtk-border);
+    border-radius: var(--ghtk-ctl-radius);
+    background: var(--ghtk-bg);
+    color: var(--ghtk-fg);
+    font-size: var(--ghtk-ctl-font);
+    line-height: normal;
+  }
+  .ghtk-input::placeholder,
+  .ghtk-modal-input::placeholder,
+  .ghtk-search input::placeholder { color: var(--ghtk-fg-muted); opacity: 1; }
+
+  .ghtk-chip {
+    display: inline-flex;
+    align-items: center;
+    height: 18px;
+    padding: 0 6px;
+    border: 1px solid var(--ghtk-accent-border);
+    border-radius: 999px;
+    background: var(--ghtk-accent-bg);
+    color: var(--ghtk-accent);
+    font-size: var(--ghtk-fs-small);
+    font-weight: 500;
+    line-height: 1;
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+
+  /* ===== 绑定 Tab：工具栏 ===== */
+  .ghtk-toolbar {
+    flex: 0 0 auto;
+    display: flex;
+    gap: var(--ghtk-gap);
+    padding: 10px 12px;
+    border-bottom: 1px solid var(--ghtk-border);
+  }
+  .ghtk-search {
+    flex: 1;
+    min-width: 0;
+    height: var(--ghtk-ctl-h);
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 0 10px;
+    border: 1px solid var(--ghtk-border);
+    border-radius: var(--ghtk-ctl-radius);
+    background: var(--ghtk-bg-muted);
+    color: var(--ghtk-fg-muted);
+  }
+  .ghtk-search svg { width: var(--ghtk-icon); height: var(--ghtk-icon); }
+  .ghtk-search input {
+    flex: 1;
+    min-width: 0;
+    height: 100%;
+    padding: 0;
+    border: none;
+    background: transparent;
+    color: var(--ghtk-fg);
+    font-size: var(--ghtk-ctl-font);
+    font-weight: 400;
+    line-height: normal;
+  }
+  .ghtk-toolbar-add {
+    border-color: var(--ghtk-border);
+    background: var(--ghtk-bg-muted);
+    color: var(--ghtk-fg);
+  }
+  .ghtk-toolbar-add.active {
+    border-color: var(--ghtk-accent-border);
+    background: var(--ghtk-accent-bg);
+    color: var(--ghtk-accent);
+  }
+
+  /* ===== 绑定 Tab：左栏 ===== */
+  .ghtk-split { flex: 1; min-height: 0; display: flex; }
+  .ghtk-rail {
+    flex: 0 0 152px;
+    width: 152px;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    background: var(--ghtk-bg-muted);
+    border-right: 1px solid var(--ghtk-border);
+  }
+  .ghtk-rail-head {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 12px 6px;
+    color: var(--ghtk-fg-muted);
+    font-size: var(--ghtk-fs-small);
+    font-weight: 600;
+  }
+  .ghtk-rail-list {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    padding: 0 6px 8px;
+  }
+  .ghtk-rail-item {
+    position: relative;
+    flex: 0 0 auto;
+    width: 100%;
+    height: 40px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 0 8px 0 10px;
+    border: none;
+    border-radius: var(--ghtk-ctl-radius);
+    background: transparent;
+    color: var(--ghtk-fg);
+    text-align: left;
+    cursor: pointer;
+  }
+  .ghtk-rail-item:hover { background: var(--ghtk-bg-neutral); }
+  .ghtk-rail-item.active { background: var(--ghtk-accent-bg); }
+  .ghtk-rail-item.active::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    top: 8px;
+    bottom: 8px;
+    width: 3px;
+    border-radius: 2px;
+    background: var(--ghtk-accent-emphasis);
+  }
+  .ghtk-rail-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+  .ghtk-rail-name {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    min-width: 0;
+    font-size: var(--ghtk-fs-name);
+    font-weight: 600;
+    line-height: 16px;
+    color: var(--ghtk-fg);
+  }
+  .ghtk-rail-name > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .ghtk-rail-name svg { width: 12px; height: 12px; color: var(--ghtk-accent); }
+  .ghtk-rail-item.active .ghtk-rail-name { color: var(--ghtk-accent); }
+  .ghtk-rail-owner {
+    font-size: var(--ghtk-fs-small);
+    line-height: 14px;
+    color: var(--ghtk-fg-muted);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .ghtk-rail-count {
+    flex-shrink: 0;
+    min-width: 16px;
+    text-align: right;
+    font-size: var(--ghtk-fs-small);
+    color: var(--ghtk-fg-muted);
+  }
+  .ghtk-rail-empty {
+    padding: 16px 8px;
+    text-align: center;
+    color: var(--ghtk-fg-muted);
+    font-size: var(--ghtk-fs-small);
+    line-height: 1.6;
+  }
+
+  /* 当前仓库入口：只在当前仓库还没进列表时出现 */
+  .ghtk-current-repo {
+    flex: 0 0 auto;
+    height: var(--ghtk-ctl-h);
+    margin: 0 6px 6px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 0 8px;
+    border: 1px dashed var(--ghtk-border);
+    border-radius: var(--ghtk-ctl-radius);
+    background: transparent;
+    color: var(--ghtk-fg-muted);
+    text-align: left;
+    cursor: pointer;
+  }
+  .ghtk-current-repo:hover {
+    border-color: var(--ghtk-accent-border);
+    background: var(--ghtk-accent-bg);
+    color: var(--ghtk-accent);
+  }
+  .ghtk-current-repo svg { width: 12px; height: 12px; }
+  .ghtk-cur-name {
+    flex: 1;
+    min-width: 0;
+    font-size: var(--ghtk-fs-body);
+    font-weight: 600;
+    color: var(--ghtk-fg);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .ghtk-current-repo:hover .ghtk-cur-name { color: var(--ghtk-accent); }
+  .ghtk-current-repo[aria-busy="true"] { opacity: .6; cursor: progress; }
+
+  /* ===== 绑定 Tab：右栏详情 ===== */
+  .ghtk-detail { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+  .ghtk-detail-head {
+    flex: 0 0 auto;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    padding: 8px 8px 8px 14px;
+    border-bottom: 1px solid var(--ghtk-border);
+  }
+  .ghtk-detail-title-row { display: flex; align-items: center; gap: 2px; min-width: 0; }
+  .ghtk-detail-title {
+    flex: 1;
+    min-width: 0;
+    font-size: var(--ghtk-fs-title);
+    font-weight: 600;
+    color: var(--ghtk-fg);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  a.ghtk-detail-title:hover { color: var(--ghtk-accent); text-decoration: underline; }
+  .ghtk-detail-sub {
+    font-size: var(--ghtk-fs-small);
+    color: var(--ghtk-fg-muted);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  /* about 区块固定 96px：加载中 / 无数据 / 有数据三种状态同高 */
+  .ghtk-about {
+    flex: 0 0 96px;
+    height: 96px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    padding: 8px 8px 8px 14px;
+    border-bottom: 1px solid var(--ghtk-border);
+    overflow: hidden;
+  }
+  .ghtk-about-top { display: flex; align-items: flex-start; gap: 4px; }
+  .ghtk-about-desc {
+    flex: 1;
+    min-width: 0;
+    font-size: var(--ghtk-fs-body);
+    line-height: 17px;
+    color: var(--ghtk-fg);
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+  .ghtk-about-desc.muted { color: var(--ghtk-fg-muted); }
+  .ghtk-about-more { margin-top: -6px; }
+  .ghtk-about-meta {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-height: 16px;
+    font-size: var(--ghtk-fs-small);
+    color: var(--ghtk-fg-muted);
+    white-space: nowrap;
+    overflow: hidden;
+  }
+  .ghtk-about-meta .ghtk-meta-item { display: inline-flex; align-items: center; gap: 4px; }
+  .ghtk-about-meta svg { width: 12px; height: 12px; }
+  .ghtk-lang-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+  .ghtk-topics { display: flex; gap: 4px; min-height: 18px; overflow: hidden; }
+  .ghtk-topic {
+    display: inline-block;
+    max-width: 120px;
+    height: 18px;
+    padding: 0 7px;
+    border-radius: 999px;
+    background: var(--ghtk-accent-bg);
+    color: var(--ghtk-accent);
+    font-size: var(--ghtk-fs-small);
+    font-weight: 500;
+    line-height: 18px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    flex-shrink: 0;
+  }
+  .ghtk-topics .ghtk-topic { min-width: 0; }
+  .ghtk-topic.more { background: var(--ghtk-bg-neutral); color: var(--ghtk-fg-muted); }
+
+  .ghtk-detail-body {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding: 10px 14px;
+  }
+  .ghtk-sec-label { font-size: var(--ghtk-fs-small); font-weight: 600; color: var(--ghtk-fg-muted); }
+  .ghtk-drow {
+    flex: 0 0 auto;
+    height: 32px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+  }
+  .ghtk-drow-branch { flex-shrink: 0; color: var(--ghtk-fg-muted); font-size: var(--ghtk-fs-small); }
+  .ghtk-drow-name {
+    flex: 0 1 auto;
+    min-width: 0;
+    font-size: var(--ghtk-fs-body);
+    color: var(--ghtk-accent);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .ghtk-drow-name:hover { text-decoration: underline; }
+  .ghtk-drow-pin { display: inline-flex; flex-shrink: 0; color: var(--ghtk-accent); }
+  .ghtk-drow-pin svg { width: 12px; height: 12px; }
+  .ghtk-drow-rm { margin-left: auto; opacity: .5; }
+  .ghtk-drow:hover .ghtk-drow-rm,
+  .ghtk-drow-rm:focus-visible { opacity: 1; }
+  .ghtk-drow-rm:hover { color: var(--ghtk-danger); background: var(--ghtk-danger-bg); }
+  .ghtk-empty-cta {
+    width: 100%;
+    min-height: 56px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    padding: 10px;
+    border: 1px dashed var(--ghtk-border);
+    border-radius: 8px;
+    background: transparent;
+    color: var(--ghtk-fg-muted);
+    font-size: var(--ghtk-fs-body);
+    line-height: 1.4;
+    cursor: pointer;
+  }
+  .ghtk-empty-cta strong { color: var(--ghtk-accent); font-weight: 600; }
+  .ghtk-empty-cta:hover { border-color: var(--ghtk-accent-border); background: var(--ghtk-accent-bg); }
+  .ghtk-empty-cta[aria-busy="true"] { opacity: .6; cursor: progress; pointer-events: none; }
+  .ghtk-detail-foot {
+    flex: 0 0 auto;
+    padding: 10px 14px 12px;
+    border-top: 1px solid var(--ghtk-border);
+  }
+
+  /* ===== 绑定 Tab：添加视图 / 空状态 ===== */
+  .ghtk-addview { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+  .ghtk-addview-head {
+    flex: 0 0 auto;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    padding: 12px 14px 10px;
+    border-bottom: 1px solid var(--ghtk-border);
+  }
+  .ghtk-addview-title { font-size: var(--ghtk-fs-title); font-weight: 600; color: var(--ghtk-fg); }
+  .ghtk-addview-body {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: var(--ghtk-gap-lg);
+    padding: 12px 14px;
+  }
+  .ghtk-field { display: flex; flex-direction: column; gap: 6px; }
+  .ghtk-field-label { font-size: var(--ghtk-fs-small); font-weight: 600; color: var(--ghtk-fg-muted); }
+  .ghtk-field-row { display: flex; gap: var(--ghtk-gap); }
+  .ghtk-field-row > .ghtk-input { flex: 1; min-width: 0; width: auto; }
+  .ghtk-field-row > .ghtk-btn { flex: 0 0 auto; }
+  .ghtk-detect {
+    display: flex;
+    flex-direction: column;
+    gap: var(--ghtk-gap);
+    padding: 10px 12px;
+    border: 1px solid var(--ghtk-accent-border);
+    border-radius: 8px;
+    background: var(--ghtk-accent-bg);
+  }
+  .ghtk-detect-label { font-size: var(--ghtk-fs-small); font-weight: 600; color: var(--ghtk-accent); }
+  .ghtk-detect-name {
+    font-size: var(--ghtk-fs-name);
+    font-weight: 600;
+    color: var(--ghtk-fg);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .ghtk-note { font-size: var(--ghtk-fs-small); color: var(--ghtk-fg-muted); line-height: 1.5; }
+  .ghtk-blank {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: var(--ghtk-gap-lg);
+    padding: 24px;
+    text-align: center;
+    color: var(--ghtk-fg-muted);
+    font-size: var(--ghtk-fs-body);
+  }
+
+  /* ===== 加速 Tab ===== */
+  .ghtk-accel { display: flex; flex-direction: column; gap: 16px; padding: 14px 16px 16px; }
+  .ghtk-accel-sec { display: flex; flex-direction: column; gap: var(--ghtk-gap-lg); }
+  .ghtk-accel-sec + .ghtk-accel-sec { padding-top: 16px; border-top: 1px solid var(--ghtk-border-muted); }
+  .ghtk-sec-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--ghtk-gap);
+    min-height: var(--ghtk-ctl-h);
+  }
+  .ghtk-sec-title { flex-shrink: 0; font-size: var(--ghtk-fs-body); font-weight: 600; color: var(--ghtk-fg); }
+  .ghtk-sec-note {
+    min-width: 0;
+    font-size: var(--ghtk-fs-small);
+    color: var(--ghtk-fg-muted);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .ghtk-seg {
+    display: inline-flex;
+    flex-shrink: 0;
+    height: var(--ghtk-ctl-h);
+    padding: 2px;
+    gap: 2px;
+    border: 1px solid var(--ghtk-border);
+    border-radius: var(--ghtk-ctl-radius);
+    background: var(--ghtk-bg-muted);
+  }
+  .ghtk-seg button {
+    height: 100%;
+    min-width: 52px;
+    padding: 0 10px;
+    border: none;
+    border-radius: 4px;
+    background: transparent;
+    color: var(--ghtk-fg-muted);
+    font-size: var(--ghtk-fs-small);
+    font-weight: 600;
+    cursor: pointer;
+  }
+  .ghtk-seg button:hover { color: var(--ghtk-fg); }
+  .ghtk-seg button.on {
+    background: var(--ghtk-bg);
+    color: var(--ghtk-accent);
+    box-shadow: 0 0 0 1px var(--ghtk-border);
+  }
+  .ghtk-cmd {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-height: 36px;
+    padding: 8px 10px;
+    border: 1px solid var(--ghtk-border);
+    border-radius: var(--ghtk-ctl-radius);
+    background: var(--ghtk-bg-inset);
+    color: var(--ghtk-fg);
+    font-size: var(--ghtk-fs-body);
+    line-height: 1.5;
+    white-space: nowrap;
+    overflow-x: auto;
+  }
+  .ghtk-cmd-prompt { flex-shrink: 0; color: var(--ghtk-fg-muted); user-select: none; }
+  .ghtk-hint {
+    padding-top: 10px;
+    border-top: 1px dashed var(--ghtk-border);
+    color: var(--ghtk-fg-muted);
+    font-size: var(--ghtk-fs-small);
+    line-height: 1.7;
+  }
+  .ghtk-hint code {
+    padding: 0 4px;
+    border-radius: 4px;
+    background: var(--ghtk-bg-neutral);
+    font-size: var(--ghtk-fs-small);
+  }
+  .ghtk-settings {
+    border: 1px solid var(--ghtk-border);
+    border-radius: 8px;
+    overflow: hidden;
+  }
+  .ghtk-settings > summary {
+    height: 36px;
+    display: flex;
+    align-items: center;
+    gap: var(--ghtk-gap);
+    padding: 0 10px 0 12px;
+    background: var(--ghtk-bg-muted);
+    color: var(--ghtk-fg);
+    font-size: var(--ghtk-fs-body);
+    font-weight: 600;
+    list-style: none;
+    cursor: pointer;
+    user-select: none;
+  }
+  .ghtk-settings > summary::-webkit-details-marker { display: none; }
+  .ghtk-settings > summary::marker { content: ""; }
+  .ghtk-settings[open] > summary { border-bottom: 1px solid var(--ghtk-border); }
+  .ghtk-settings-value {
+    flex: 1;
+    min-width: 0;
+    text-align: right;
+    font-size: var(--ghtk-fs-small);
+    font-weight: 400;
+    color: var(--ghtk-fg-muted);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .ghtk-settings > summary svg { width: 12px; height: 12px; color: var(--ghtk-fg-muted); transition: transform .15s; }
+  .ghtk-settings[open] > summary svg { transform: rotate(180deg); }
+  .ghtk-settings-body { display: flex; flex-direction: column; gap: var(--ghtk-gap); padding: 12px; }
+
+  /* ===== 插件 Tab ===== */
+  .ghtk-plugins { display: flex; flex-direction: column; padding: 8px 16px 12px; }
+  .ghtk-plugin-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--ghtk-gap-lg);
+    padding: 12px 0;
+    border-bottom: 1px solid var(--ghtk-border-muted);
+  }
+  .ghtk-plugin-text { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+  .ghtk-plugin-name { font-size: var(--ghtk-fs-name); font-weight: 600; color: var(--ghtk-fg); }
+  .ghtk-plugin-desc { font-size: var(--ghtk-fs-small); color: var(--ghtk-fg-muted); line-height: 1.5; }
+  .ghtk-plugins-foot {
+    padding-top: 12px;
+    text-align: center;
+    font-size: var(--ghtk-fs-small);
+    color: var(--ghtk-fg-muted);
+  }
+  .ghtk-switch {
+    position: relative;
+    flex: 0 0 40px;
+    width: 40px;
+    height: 22px;
+    padding: 0;
+    border: 1px solid var(--ghtk-border);
+    border-radius: 999px;
+    background: var(--ghtk-bg-neutral);
+    cursor: pointer;
+    transition: background .15s, border-color .15s;
+  }
+  .ghtk-switch::before { content: ""; position: absolute; inset: -5px -3px; }
+  .ghtk-switch-knob {
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    background: var(--ghtk-knob);
+    box-shadow: 0 1px 2px rgba(31, 35, 40, 0.3);
+    transition: transform .15s;
+    pointer-events: none;
+  }
+  .ghtk-switch.on { background: var(--ghtk-accent-emphasis); border-color: transparent; }
+  .ghtk-switch.on .ghtk-switch-knob { transform: translateX(18px); }
+
+  /* ===== 气泡 ===== */
+  .ghtk-popover {
+    position: fixed;
+    z-index: 2147483644;
+    font-size: var(--ghtk-fs-body);
+    line-height: 1.5;
+    display: flex;
+    flex-direction: column;
+    background: var(--ghtk-bg);
+    color: var(--ghtk-fg);
+    border: 1px solid var(--ghtk-border);
+    border-radius: 12px;
+    box-shadow: var(--ghtk-shadow);
+    animation: ghtk-pop .14s ease-out;
+  }
+  .ghtk-pop-inner {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    border-radius: 12px;
+    overflow: hidden;
+  }
+  .ghtk-pop-arrow {
+    position: absolute;
+    z-index: 1;
+    width: 10px;
+    height: 10px;
+    background: var(--ghtk-bg);
+    border: 1px solid var(--ghtk-border);
+    transform: rotate(45deg);
+  }
+  .ghtk-pop-arrow.up { top: -6px; border-right-color: transparent; border-bottom-color: transparent; }
+  .ghtk-pop-arrow.down { bottom: -6px; border-left-color: transparent; border-top-color: transparent; }
+  .ghtk-pop-head {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--ghtk-gap);
+    padding: 6px 6px 6px 14px;
+    border-bottom: 1px solid var(--ghtk-border);
+  }
+  .ghtk-pop-title {
+    min-width: 0;
+    font-size: var(--ghtk-fs-title);
+    font-weight: 600;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .ghtk-pop-body {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: var(--ghtk-gap-lg);
+    padding: 12px 14px 14px;
+  }
+  .ghtk-pop-desc { font-size: var(--ghtk-fs-body); line-height: 1.6; color: var(--ghtk-fg); word-break: break-word; }
+  .ghtk-pop-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px 12px; }
+  .ghtk-pop-cell { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+  .ghtk-pop-k { font-size: var(--ghtk-fs-small); color: var(--ghtk-fg-muted); }
+  .ghtk-pop-v {
+    font-size: var(--ghtk-fs-body);
+    font-weight: 600;
+    color: var(--ghtk-fg);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .ghtk-pop-group { display: flex; flex-direction: column; gap: 6px; }
+  .ghtk-pop-sec { font-size: var(--ghtk-fs-small); font-weight: 600; color: var(--ghtk-fg-muted); }
+  .ghtk-pop-topics { display: flex; flex-wrap: wrap; gap: 4px; }
+  .ghtk-pop-topics .ghtk-topic { max-width: none; }
+  .ghtk-pop-home { font-size: var(--ghtk-fs-body); color: var(--ghtk-accent); word-break: break-all; }
+  .ghtk-pop-home:hover { text-decoration: underline; }
+  .ghtk-pop-note { font-size: var(--ghtk-fs-small); color: var(--ghtk-fg-muted); }
+
+  /* ===== 下拉菜单 ===== */
+  .ghtk-menu {
+    position: fixed;
+    z-index: 2147483644;
+    min-width: 160px;
+    font-size: var(--ghtk-fs-body);
+    line-height: 1.5;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    padding: 4px;
+    background: var(--ghtk-bg);
+    border: 1px solid var(--ghtk-border);
+    border-radius: 10px;
+    box-shadow: var(--ghtk-shadow-sm);
+    animation: ghtk-pop .12s ease-out;
+  }
+  .ghtk-menu-item {
+    height: var(--ghtk-ctl-h);
+    display: flex;
+    align-items: center;
+    padding: 0 10px;
+    border: none;
+    border-radius: var(--ghtk-ctl-radius);
+    background: transparent;
+    color: var(--ghtk-fg);
+    font-size: var(--ghtk-fs-body);
+    text-align: left;
+    white-space: nowrap;
+    cursor: pointer;
+  }
+  .ghtk-menu-item:hover,
+  .ghtk-menu-item:focus { background: var(--ghtk-bg-neutral); }
+  .ghtk-menu-item.danger { color: var(--ghtk-danger); }
+  .ghtk-menu-item.danger:hover,
+  .ghtk-menu-item.danger:focus { background: var(--ghtk-danger-bg); }
+
+  /* ===== 对话框（定位由 JS 用 important 内联覆盖到面板区域） ===== */
+  .ghtk-modal-mask {
+    position: fixed;
+    inset: 0;
+    z-index: 2147483645;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 16px;
+    background: var(--ghtk-backdrop);
+    animation: ghtk-fade .12s ease-out;
+  }
+  .ghtk-modal-mask.in-panel { padding: 12px; }
+  .ghtk-modal {
+    width: 100%;
+    max-width: 340px;
+    font-size: var(--ghtk-fs-body);
+    line-height: 1.5;
+    max-height: 100%;
+    display: flex;
+    flex-direction: column;
+    background: var(--ghtk-bg);
+    color: var(--ghtk-fg);
+    border: 1px solid var(--ghtk-border);
+    border-radius: 12px;
+    box-shadow: var(--ghtk-shadow);
+    overflow: hidden;
+    animation: ghtk-pop .14s ease-out;
+  }
+  .ghtk-modal-header {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--ghtk-gap);
+    padding: 8px 8px 8px 16px;
+    border-bottom: 1px solid var(--ghtk-border);
+  }
+  .ghtk-modal-title { font-size: var(--ghtk-fs-title); font-weight: 600; color: var(--ghtk-fg); }
+  .ghtk-modal-body {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: var(--ghtk-gap-lg);
+    padding: 16px;
+  }
+  .ghtk-modal-content { font-size: var(--ghtk-fs-body); line-height: 1.6; color: var(--ghtk-fg); word-break: break-word; }
+  .ghtk-modal-content b { font-weight: 600; }
+  .ghtk-modal-footer {
+    flex: 0 0 auto;
+    display: flex;
+    justify-content: flex-end;
+    gap: var(--ghtk-gap);
+    padding: 12px 16px;
+    border-top: 1px solid var(--ghtk-border);
+  }
+
+  /* ===== 提示条（单例） ===== */
+  .ghtk-toast {
+    position: fixed;
+    left: 50%;
+    bottom: 32px;
+    z-index: 2147483647;
+    max-width: calc(100vw - 32px);
+    padding: 8px 14px;
+    border-radius: 8px;
+    background: var(--ghtk-bg-emphasis);
+    color: var(--ghtk-fg-on-emphasis);
+    font-size: var(--ghtk-fs-body);
+    line-height: 1.4;
+    box-shadow: var(--ghtk-shadow-sm);
+    opacity: 0;
+    transform: translate(-50%, 8px);
+    transition: opacity .18s ease, transform .18s ease;
+    pointer-events: none;
+  }
+  .ghtk-toast.show { opacity: 1; transform: translate(-50%, 0); }
+
+  @keyframes ghtk-fade { from { opacity: 0; } to { opacity: 1; } }
+  @keyframes ghtk-pop { from { opacity: 0; transform: translateY(-4px) scale(.98); } to { opacity: 1; transform: none; } }
+  @keyframes ghtk-spin { to { transform: rotate(360deg); } }
+
+  @media (max-width: 480px) {
     .ghtk-panel {
-      position: fixed !important;
-      width: 400px !important;
-      height: 560px !important;
-      max-height: 80vh !important;
-      background: var(--bgColor-default, #ffffff) !important;
-      border: 1px solid var(--borderColor-default, #d0d7de) !important;
-      border-radius: 14px !important;
-      box-shadow: 0 12px 40px rgba(31,35,40,.2) !important;
-      z-index: 2147483647 !important;
-      font-size: 13px !important;
-      color: var(--fgColor-default, #1f2328) !important;
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Noto Sans, Helvetica, Arial, sans-serif !important;
-      display: flex !important;
-      flex-direction: column !important;
-      overflow: hidden !important;
-      animation: ghtk-in .15s ease-out !important;
-    }
-    @keyframes ghtk-in {
-      from { opacity: 0; transform: translateY(8px) scale(.98); }
-      to   { opacity: 1; transform: none; }
-    }
-
-    .ghtk-panel header {
-      display: flex !important;
-      align-items: center !important;
-      justify-content: space-between !important;
-      padding: 0 12px 0 16px !important;
-      height: 44px !important;
-      border-bottom: 1px solid var(--borderColor-muted, #d8dee4) !important;
-      cursor: move !important;
-      user-select: none !important;
-      background: var(--bgColor-muted, #f6f8fa) !important;
-      flex-shrink: 0 !important;
-    }
-    .ghtk-panel header .title {
-      font-weight: 600 !important;
-      font-size: 13px !important;
-      color: var(--fgColor-muted, #59636e) !important;
-    }
-    .ghtk-panel .close-btn {
-      width: var(--ghtk-ctl-h) !important;
-      height: var(--ghtk-ctl-h) !important;
-      border: none !important;
-      background: none !important;
-      border-radius: var(--ghtk-ctl-radius) !important;
-      cursor: pointer !important;
-      color: var(--fgColor-muted, #59636e) !important;
-      font-size: 15px !important;
-      display: flex !important;
-      align-items: center !important;
-      justify-content: center !important;
-    }
-    /* 云端备份入口：与关闭按钮组成一组，紧贴右侧 */
-    .ghtk-panel .head-actions {
-      display: flex !important;
-      align-items: center !important;
-      gap: 2px !important;
-      flex-shrink: 0 !important;
-    }
-    .ghtk-panel .cloud-btn {
-      width: var(--ghtk-ctl-h) !important;
-      height: var(--ghtk-ctl-h) !important;
-      border: none !important;
-      background: none !important;
-      border-radius: var(--ghtk-ctl-radius) !important;
-      cursor: pointer !important;
-      color: var(--fgColor-muted, #59636e) !important;
-      display: flex !important;
-      align-items: center !important;
-      justify-content: center !important;
-      padding: 0 !important;
-      margin: 0 !important;
-    }
-    .ghtk-panel .cloud-btn svg {
-      width: 15px !important;
-      height: 15px !important;
-      /* stroke 风格图标：描边取 currentColor，不设 fill */
-      fill: none !important;
-      stroke: currentColor !important;
-    }
-    .ghtk-panel .cloud-btn:hover {
-      background: var(--bgColor-neutral-muted, #818b981f) !important;
-      color: #0969da !important;
-    }
-    .ghtk-panel .close-btn:hover {
-      background: var(--bgColor-neutral-muted, #818b981f) !important;
-      color: var(--fgColor-default, #1f2328) !important;
-    }
-
-    .ghtk-tabs {
-      display: flex !important;
-      border-bottom: 1px solid var(--borderColor-muted, #d8dee4) !important;
-      background: var(--bgColor-default, #fff) !important;
-      flex-shrink: 0 !important;
-      padding: 0 8px !important;
-    }
-    .ghtk-tab {
-      flex: 1 !important;
-      height: 36px !important;
-      padding: 0 8px !important;
-      text-align: center !important;
-      font-size: var(--ghtk-ctl-font) !important;
-      font-weight: 500 !important;
-      color: var(--fgColor-muted, #59636e) !important;
-      cursor: pointer !important;
-      border: none !important;
-      background: none !important;
-      border-bottom: 2px solid transparent !important;
-      transition: color .15s, border-color .15s !important;
-    }
-    .ghtk-tab:hover { color: var(--fgColor-default, #1f2328) !important; }
-    .ghtk-tab.active {
-      color: #0969da !important;
-      border-bottom-color: #0969da !important;
-      font-weight: 600 !important;
-    }
-
-    .ghtk-panel .body {
-      padding: 0 !important;
-      overflow: hidden !important;
-      flex: 1 !important;
-      display: flex !important;
-      flex-direction: column !important;
-      min-height: 0 !important;
-    }
-    .ghtk-tab-content {
-      display: none !important;
-      flex-direction: column !important;
-      height: 100% !important;
-      min-height: 0 !important;
-      overflow: hidden !important;
-    }
-    .ghtk-tab-content.active { display: flex !important; }
-
-    /* ===== 工具栏：搜索框 + 图标按钮 ===== */
-    .ghtk-toolbar {
-      display: flex !important;
-      align-items: center !important;
-      gap: var(--ghtk-ctl-gap) !important;
-      padding: 8px 12px !important;
-      border-bottom: 1px solid var(--borderColor-muted, #d8dee4) !important;
-      background: var(--bgColor-default, #fff) !important;
-      flex-shrink: 0 !important;
-    }
-    .ghtk-search {
-      flex: 1 !important;
-      min-width: 0 !important;
-      display: flex !important;
-      align-items: center !important;
-      gap: 6px !important;
-      height: var(--ghtk-ctl-h) !important;
-      padding: 0 10px !important;
-      border: 1px solid var(--borderColor-default, #d0d7de) !important;
-      border-radius: var(--ghtk-ctl-radius) !important;
-      background: var(--bgColor-muted, #f6f8fa) !important;
-      box-sizing: border-box !important;
-    }
-    .ghtk-search:focus-within {
-      border-color: #0969da !important;
-      background: var(--bgColor-default, #fff) !important;
-    }
-    .ghtk-search svg {
-      width: 13px !important;
-      height: 13px !important;
-      flex-shrink: 0 !important;
-      color: var(--fgColor-muted, #59636e) !important;
-    }
-    .ghtk-search input {
-      flex: 1 !important;
-      min-width: 0 !important;
-      height: 100% !important;
-      border: none !important;
-      outline: none !important;
-      background: none !important;
-      font-size: var(--ghtk-ctl-font) !important;
-      color: var(--fgColor-default, #1f2328) !important;
-      padding: 0 !important;
-    }
-    .ghtk-search input::placeholder {
-      color: var(--fgColor-muted, #59636e) !important;
-    }
-    .ghtk-toolbar-btn {
-      flex-shrink: 0 !important;
-      width: var(--ghtk-ctl-h) !important;
-      height: var(--ghtk-ctl-h) !important;
-      border: 1px solid var(--borderColor-default, #d0d7de) !important;
-      border-radius: var(--ghtk-ctl-radius) !important;
-      background: var(--bgColor-muted, #f6f8fa) !important;
-      color: var(--fgColor-default, #1f2328) !important;
-      cursor: pointer !important;
-      display: inline-flex !important;
-      align-items: center !important;
-      justify-content: center !important;
-      padding: 0 !important;
-      box-sizing: border-box !important;
-    }
-    .ghtk-toolbar-btn:hover { background: var(--bgColor-neutral-muted, #818b981f) !important; }
-    .ghtk-toolbar-btn svg {
-      width: var(--ghtk-icon) !important;
-      height: var(--ghtk-icon) !important;
-      fill: currentColor !important;
-    }
-    .ghtk-toolbar-btn.active {
-      background: #0969da !important;
-      border-color: #0969da !important;
-      color: #fff !important;
-    }
-
-    /* ===== 主从布局：左栏上游列表 + 右栏详情 ===== */
-    .ghtk-split {
-      flex: 1 !important;
-      display: flex !important;
-      min-height: 0 !important;
-    }
-    .ghtk-rail {
-      width: 152px !important;
-      flex-shrink: 0 !important;
-      border-right: 1px solid var(--borderColor-muted, #d8dee4) !important;
-      background: var(--bgColor-muted, #f6f8fa) !important;
-      display: flex !important;
-      flex-direction: column !important;
-      min-height: 0 !important;
-    }
-    .ghtk-rail-head {
-      display: flex !important;
-      align-items: center !important;
-      justify-content: space-between !important;
-      gap: 6px !important;
-      padding: 10px 12px 6px !important;
-      font-size: 10px !important;
-      font-weight: 600 !important;
-      color: var(--fgColor-muted, #59636e) !important;
-      letter-spacing: .5px !important;
-      text-transform: uppercase !important;
-      flex-shrink: 0 !important;
-    }
-    .ghtk-rail-state {
-      font-size: 10px !important;
-      font-weight: 500 !important;
-      letter-spacing: 0 !important;
-      text-transform: none !important;
-      color: var(--fgColor-muted, #59636e) !important;
-      overflow: hidden !important;
-      text-overflow: ellipsis !important;
-      white-space: nowrap !important;
-    }
-    /* ===== 左栏「当前仓库」入口：图钉 + 仓库名 + 状态图标，hover 出说明 ===== */
-    .ghtk-current-repo {
-      position: relative !important;
-      display: flex !important;
-      align-items: center !important;
-      justify-content: flex-start !important;
-      gap: 5px !important;
-      height: var(--ghtk-ctl-h) !important;
-      margin: 0 6px 4px !important;
-      padding: 0 8px !important;
-      border: 1px solid var(--borderColor-default, #d0d7de) !important;
-      border-radius: var(--ghtk-ctl-radius) !important;
-      background: var(--bgColor-default, #fff) !important;
-      color: var(--fgColor-muted, #59636e) !important;
-      cursor: pointer !important;
-      flex-shrink: 0 !important;
-      transition: background .12s, color .12s, border-color .12s !important;
-      box-sizing: border-box !important;
-    }
-    .ghtk-current-repo[hidden] { display: none !important; }
-    .ghtk-current-repo:hover {
-      background: #ddf4ff !important;
-      border-color: #54aeff !important;
-      color: #0969da !important;
-    }
-    .ghtk-current-repo .pin {
-      width: 13px !important;
-      height: 13px !important;
-      fill: currentColor !important;
-      flex-shrink: 0 !important;
-    }
-    /* 仓库名：占满中间，超长省略 */
-    .ghtk-current-repo .name {
-      flex: 1 !important;
-      min-width: 0 !important;
-      font-size: 11.5px !important;
-      font-weight: 600 !important;
-      color: var(--fgColor-default, #1f2328) !important;
-      text-align: left !important;
-      overflow: hidden !important;
-      text-overflow: ellipsis !important;
-      white-space: nowrap !important;
-    }
-    .ghtk-current-repo:hover .name { color: #0969da !important; }
-    .ghtk-current-repo.bound:hover .name { color: #1a7f37 !important; }
-    .ghtk-current-repo .badge {
-      width: 11px !important;
-      height: 11px !important;
-      flex-shrink: 0 !important;
-    }
-    /* 已绑定：实心勾（绿）；未绑定：空心圆（灰）。
-       必须带 #ghtk-root 前缀，否则会被 reset 段的 #ghtk-root svg（含 id 选择器）压过。 */
-    #ghtk-root .ghtk-current-repo .bound-icon {
-      display: none !important;
-      fill: #1a7f37 !important;
-    }
-    #ghtk-root .ghtk-current-repo .unbound-icon {
-      display: block !important;
-      fill: #afb8c1 !important;
-    }
-    #ghtk-root .ghtk-current-repo.bound .bound-icon { display: block !important; }
-    #ghtk-root .ghtk-current-repo.bound .unbound-icon { display: none !important; }
-    .ghtk-current-repo.bound { color: #1a7f37 !important; }
-    .ghtk-current-repo.bound:hover {
-      background: #dafbe1 !important;
-      border-color: #4ac26b !important;
-      color: #1a7f37 !important;
-    }
-
-    .ghtk-rail-list {
-      flex: 1 !important;
-      overflow-y: auto !important;
-      padding: 0 6px 8px !important;
-      min-height: 0 !important;
-    }
-    .ghtk-rail-list::-webkit-scrollbar { width: 6px !important; }
-    .ghtk-rail-list::-webkit-scrollbar-thumb {
-      background: var(--borderColor-default, #d0d7de) !important;
-      border-radius: 3px !important;
-    }
-    .ghtk-rail-item {
-      position: relative !important;
-      display: flex !important;
-      align-items: center !important;
-      gap: 6px !important;
-      height: 32px !important;
-      padding: 0 8px !important;
-      border-radius: 5px !important;
-      font-size: 12px !important;
-      color: var(--fgColor-default, #1f2328) !important;
-      cursor: pointer !important;
-    }
-    .ghtk-rail-item:hover { background: var(--bgColor-neutral-muted, #818b981f) !important; }
-    .ghtk-rail-item.active {
-      background: #fff !important;
-      color: #0550ae !important;
-      font-weight: 600 !important;
-      box-shadow: 0 1px 3px rgba(31,35,40,.08) !important;
-    }
-    .ghtk-rail-item.active::before {
-      content: "" !important;
-      position: absolute !important;
-      left: 0 !important;
-      top: 6px !important;
-      bottom: 6px !important;
-      width: 2px !important;
-      border-radius: 2px !important;
-      background: #0969da !important;
-    }
-    .ghtk-rail-name {
-      flex: 1 !important;
-      min-width: 0 !important;
-      overflow: hidden !important;
-      text-overflow: ellipsis !important;
-      white-space: nowrap !important;
-    }
-    .ghtk-rail-n {
-      flex-shrink: 0 !important;
-      font-size: 10px !important;
-      color: var(--fgColor-muted, #59636e) !important;
-      font-variant-numeric: tabular-nums !important;
-    }
-    .ghtk-rail-item.active .ghtk-rail-n { color: #0550ae !important; }
-    /* 与当前页面相关的绑定（当前仓库即其上游，或是其下游） */
-    .ghtk-rail-dot {
-      flex-shrink: 0 !important;
-      width: 5px !important;
-      height: 5px !important;
-      border-radius: 50% !important;
-      background: #0969da !important;
-    }
-    .ghtk-rail-item.related:not(.active) .ghtk-rail-name { color: #0550ae !important; }
-    .ghtk-rail-empty {
-      padding: 16px 8px !important;
-      text-align: center !important;
-      font-size: 11px !important;
-      color: var(--fgColor-muted, #59636e) !important;
-      line-height: 1.5 !important;
-    }
-
-    .ghtk-detail {
-      flex: 1 !important;
-      display: flex !important;
-      flex-direction: column !important;
-      min-width: 0 !important;
-      min-height: 0 !important;
-    }
-    .ghtk-detail-head {
-      padding: 12px 14px 10px !important;
-      border-bottom: 1px solid var(--borderColor-muted, #d8dee4) !important;
-      flex-shrink: 0 !important;
-    }
-
-    /* ===== 上游 about 区块：固定 88px，内容溢出走气泡查看 ===== */
-    .ghtk-about {
-      height: 88px !important;
-      flex: 0 0 88px !important;
-      padding: 9px 12px 8px 14px !important;
-      border-bottom: 1px solid var(--borderColor-muted, #d8dee4) !important;
-      display: flex !important;
-      flex-direction: column !important;
-      min-height: 0 !important;
-      overflow: hidden !important;
-      position: relative !important;
-    }
-    .ghtk-about-top {
-      display: flex !important;
-      align-items: flex-start !important;
-      gap: 6px !important;
-      margin-bottom: 5px !important;
-      min-height: 0 !important;
-    }
-    .ghtk-about-desc {
-      flex: 1 !important;
-      min-width: 0 !important;
-      font-size: 11px !important;
-      line-height: 1.5 !important;
-      color: var(--fgColor-default, #1f2328) !important;
-      /* 固定 2 行，超出省略 */
-      display: -webkit-box !important;
-      -webkit-line-clamp: 2 !important;
-      -webkit-box-orient: vertical !important;
-      overflow: hidden !important;
-      text-overflow: ellipsis !important;
-      word-break: break-word !important;
-      overflow-wrap: anywhere !important;
-    }
-    .ghtk-about-desc.muted {
-      color: var(--fgColor-muted, #59636e) !important;
-      font-style: italic !important;
-    }
-    .ghtk-about-expand {
-      flex-shrink: 0 !important;
-      width: 22px !important;
-      height: 22px !important;
-      border: none !important;
-      background: none !important;
-      border-radius: 5px !important;
-      color: var(--fgColor-muted, #59636e) !important;
-      display: inline-flex !important;
-      align-items: center !important;
-      justify-content: center !important;
-      cursor: pointer !important;
-      padding: 0 !important;
-      transition: background .12s, color .12s !important;
-    }
-    .ghtk-about-expand:hover {
-      background: #ddf4ff !important;
-      color: #0969da !important;
-    }
-    .ghtk-about-expand svg {
-      width: 13px !important;
-      height: 13px !important;
-      fill: currentColor !important;
-    }
-
-    .ghtk-about-meta {
-      display: flex !important;
-      flex-wrap: nowrap !important;
-      gap: 9px !important;
-      font-size: 10px !important;
-      color: var(--fgColor-muted, #59636e) !important;
-      align-items: center !important;
-      overflow: hidden !important;
-      max-height: 16px !important;
-      flex-shrink: 0 !important;
-    }
-    .ghtk-about-meta .item {
-      display: inline-flex !important;
-      align-items: center !important;
-      gap: 3px !important;
-      min-width: 0 !important;
-      max-width: 100% !important;
-    }
-    .ghtk-about-meta .item span {
-      overflow: hidden !important;
-      text-overflow: ellipsis !important;
-      white-space: nowrap !important;
-      max-width: 96px !important;
-    }
-    .ghtk-about-meta svg {
-      width: 11px !important;
-      height: 11px !important;
-      fill: var(--fgColor-muted, #59636e) !important;
-      flex-shrink: 0 !important;
-    }
-
-    .ghtk-lang-dot {
-      width: 7px !important;
-      height: 7px !important;
-      border-radius: 50% !important;
-      background: #0969da !important;
-      flex-shrink: 0 !important;
-    }
-    .ghtk-topics {
-      display: flex !important;
-      flex-wrap: nowrap !important;
-      gap: 3px !important;
-      margin-top: 5px !important;
-      overflow: hidden !important;
-      max-height: 17px !important;
-      flex-shrink: 0 !important;
-    }
-    .ghtk-topic {
-      font-size: 9.5px !important;
-      font-weight: 500 !important;
-      color: #0550ae !important;
-      background: #ddf4ff !important;
-      border: 1px solid #b6e3ff !important;
-      border-radius: 20px !important;
-      padding: 1px 7px !important;
-      line-height: 1.6 !important;
-      white-space: nowrap !important;
-    }
-    .ghtk-detail-title {
-      display: flex !important;
-      align-items: center !important;
-      gap: 7px !important;
-      margin-bottom: 5px !important;
-    }
-    .ghtk-detail-title .name {
-      font-size: 14px !important;
-      font-weight: 600 !important;
-      overflow: hidden !important;
-      text-overflow: ellipsis !important;
-      white-space: nowrap !important;
-    }
-    .ghtk-chip {
-      flex-shrink: 0 !important;
-      font-size: 9.5px !important;
-      font-weight: 600 !important;
-      color: #0550ae !important;
-      background: #ddf4ff !important;
-      border: 1px solid #b6e3ff !important;
-      border-radius: 20px !important;
-      padding: 1px 6px !important;
-      line-height: 1.6 !important;
-    }
-    .ghtk-detail-sub {
-      font-size: 10.5px !important;
-      color: var(--fgColor-muted, #59636e) !important;
-      line-height: 1.6 !important;
-    }
-    .ghtk-detail-sub b { color: var(--fgColor-default, #1f2328) !important; font-weight: 600 !important; }
-    .ghtk-detail-sub code {
-      font-family: ui-monospace, SFMono-Regular, monospace !important;
-      font-size: 10px !important;
-      background: #afb8c133 !important;
-      padding: 1px 4px !important;
-      border-radius: 3px !important;
-    }
-    .ghtk-detail-body {
-      flex: 1 !important;
-      overflow-y: auto !important;
-      padding: 10px 14px !important;
-      min-height: 0 !important;
-    }
-    .ghtk-detail-body::-webkit-scrollbar { width: 6px !important; }
-    .ghtk-detail-body::-webkit-scrollbar-thumb {
-      background: var(--borderColor-default, #d0d7de) !important;
-      border-radius: 3px !important;
-    }
-    .ghtk-sec-label {
-      font-size: 10px !important;
-      font-weight: 600 !important;
-      color: var(--fgColor-muted, #59636e) !important;
-      letter-spacing: .5px !important;
-      text-transform: uppercase !important;
-      margin-bottom: 4px !important;
-    }
-    .ghtk-drow {
-      display: flex !important;
-      align-items: center !important;
-      gap: 6px !important;
-      height: var(--ghtk-ctl-h) !important;
-      font-size: 11.5px !important;
-      color: var(--fgColor-muted, #59636e) !important;
-      border-radius: 5px !important;
-      padding: 0 4px !important;
-    }
-    .ghtk-drow:hover { background: var(--bgColor-muted, #f6f8fa) !important; }
-    .ghtk-drow-dash { color: var(--fgColor-muted, #59636e) !important; flex-shrink: 0 !important; }
-    .ghtk-drow a {
-      flex: 1 !important;
-      min-width: 0 !important;
-      color: #0969da !important;
-      text-decoration: none !important;
-      overflow: hidden !important;
-      text-overflow: ellipsis !important;
-      white-space: nowrap !important;
-    }
-    .ghtk-drow a:hover { text-decoration: underline !important; }
-    /* 下游行内标记：我的 Fork / 当前仓库 */
-    .ghtk-drow .ghtk-chip {
-      flex-shrink: 0 !important;
-      font-size: 9px !important;
-      padding: 0 5px !important;
-    }
-    .ghtk-drow-rm { opacity: 0 !important; }
-    .ghtk-drow:hover .ghtk-drow-rm { opacity: 1 !important; }
-    .ghtk-drow-rm:hover { color: #cf222e !important; background: #ffebe9 !important; }
-    .ghtk-dempty {
-      padding: 16px 12px !important;
-      border: 1px dashed var(--borderColor-default, #d0d7de) !important;
-      border-radius: 8px !important;
-      text-align: center !important;
-      font-size: 11px !important;
-      color: var(--fgColor-muted, #59636e) !important;
-    }
-    .ghtk-detail-foot {
-      border-top: 1px solid var(--borderColor-muted, #d8dee4) !important;
-      padding: 10px 14px !important;
-      flex-shrink: 0 !important;
-    }
-    .ghtk-foot-main {
-      display: flex !important;
-      gap: var(--ghtk-ctl-gap) !important;
-    }
-    .ghtk-foot-main .ghtk-btn {
-      flex: 1 !important;
-      min-width: 0 !important;
-    }
-    /* 第二排：次要操作，同样等宽 */
-    .ghtk-foot-second {
-      margin-top: var(--ghtk-ctl-gap) !important;
-    }
-    .ghtk-detail-empty {
-      flex: 1 !important;
-      display: flex !important;
-      flex-direction: column !important;
-      align-items: center !important;
-      justify-content: center !important;
-      gap: 10px !important;
-      font-size: 12px !important;
-      color: var(--fgColor-muted, #59636e) !important;
-    }
-
-    /* ===== 添加上游视图 ===== */
-    .ghtk-addview {
-      flex: 1 !important;
-      display: flex !important;
-      flex-direction: column !important;
-      min-width: 0 !important;
-      min-height: 0 !important;
-    }
-    .ghtk-addview-head {
-      padding: 12px 14px 10px !important;
-      border-bottom: 1px solid var(--borderColor-muted, #d8dee4) !important;
-      flex-shrink: 0 !important;
-    }
-    .ghtk-addview-title {
-      font-size: 14px !important;
-      font-weight: 600 !important;
-      margin-bottom: 3px !important;
-    }
-    .ghtk-addview-sub {
-      font-size: 10.5px !important;
-      color: var(--fgColor-muted, #59636e) !important;
-    }
-    .ghtk-addview-body {
-      flex: 1 !important;
-      padding: 14px !important;
-      min-height: 0 !important;
-      overflow-y: auto !important;
-    }
-    .ghtk-field-label {
-      display: block !important;
-      font-size: 10.5px !important;
-      font-weight: 600 !important;
-      color: var(--fgColor-muted, #59636e) !important;
-      margin-bottom: 5px !important;
-    }
-    .ghtk-field { display: flex !important; gap: var(--ghtk-ctl-gap) !important; }
-    .ghtk-field input {
-      flex: 1 !important;
-      min-width: 0 !important;
-      height: var(--ghtk-ctl-h) !important;
-      padding: 0 10px !important;
-      border: 1px solid var(--borderColor-default, #d0d7de) !important;
-      border-radius: var(--ghtk-ctl-radius) !important;
-      font-size: var(--ghtk-ctl-font) !important;
-      font-family: inherit !important;
-      color: var(--fgColor-default, #1f2328) !important;
-      background: var(--bgColor-default, #fff) !important;
-      box-sizing: border-box !important;
-    }
-    .ghtk-field input:focus {
-      outline: 2px solid #0969da !important;
-      outline-offset: -1px !important;
-    }
-    .ghtk-hint {
-      font-size: 10px !important;
-      color: var(--fgColor-muted, #59636e) !important;
-      margin-top: 6px !important;
-      line-height: 1.6 !important;
-    }
-    .ghtk-note {
-      margin-top: 12px !important;
-      font-size: 11px !important;
-      color: var(--fgColor-muted, #59636e) !important;
-      line-height: 1.6 !important;
-    }
-    .ghtk-detect {
-      margin-top: 14px !important;
-      padding: 9px 10px !important;
-      border: 1px solid #54aeff !important;
-      background: #ddf4ff !important;
-      border-radius: 8px !important;
-    }
-    .ghtk-detect-label {
-      font-size: 10px !important;
-      color: #0550ae !important;
-      font-weight: 600 !important;
-      margin-bottom: 2px !important;
-    }
-    .ghtk-detect-repo {
-      font-size: 12px !important;
-      font-weight: 600 !important;
-      margin-bottom: 8px !important;
-      overflow: hidden !important;
-      text-overflow: ellipsis !important;
-      white-space: nowrap !important;
-    }
-    .ghtk-detect-actions { display: flex !important; gap: 6px !important; }
-    .ghtk-detect-actions .ghtk-btn.primary { flex: 1 !important; }
-    .ghtk-addview-foot {
-      border-top: 1px solid var(--borderColor-muted, #d8dee4) !important;
-      padding: 10px 14px !important;
-      display: flex !important;
-      gap: var(--ghtk-ctl-gap) !important;
-      justify-content: flex-end !important;
-      flex-shrink: 0 !important;
-    }
-
-    .ghtk-form-row {
-      display: flex !important;
-      gap: var(--ghtk-ctl-gap) !important;
-    }
-    .ghtk-form-row input {
-      flex: 1 !important;
-      min-width: 0 !important;
-      height: var(--ghtk-ctl-h) !important;
-      padding: 0 10px !important;
-      border: 1px solid var(--borderColor-default, #d0d7de) !important;
-      border-radius: var(--ghtk-ctl-radius) !important;
-      font-size: var(--ghtk-ctl-font) !important;
-      background: var(--bgColor-default, #fff) !important;
-      color: var(--fgColor-default, #1f2328) !important;
-      box-sizing: border-box !important;
-    }
-    .ghtk-form-row input:focus {
-      outline: 2px solid #0969da !important;
-      outline-offset: -1px !important;
-    }
-
-    .ghtk-scroll-area {
-      flex: 1 !important;
-      min-height: 0 !important;
-      overflow-y: auto !important;
-      padding: 12px 16px 16px !important;
-    }
-    .ghtk-scroll-area::-webkit-scrollbar { width: 6px !important; }
-    .ghtk-scroll-area::-webkit-scrollbar-thumb {
-      background: var(--borderColor-default, #d0d7de) !important;
-      border-radius: 3px !important;
-    }
-
-    .ghtk-icon-btn {
-      width: var(--ghtk-ctl-h) !important;
-      height: var(--ghtk-ctl-h) !important;
-      border: none !important;
-      background: none !important;
-      border-radius: var(--ghtk-ctl-radius) !important;
-      color: var(--fgColor-muted, #59636e) !important;
-      cursor: pointer !important;
-      display: inline-flex !important;
-      align-items: center !important;
-      justify-content: center !important;
-      padding: 0 !important;
-      transition: background .12s, color .12s !important;
-    }
-    .ghtk-icon-btn:hover {
-      background: var(--bgColor-neutral-muted, #818b981f) !important;
-      color: var(--fgColor-default, #1f2328) !important;
-    }
-    .ghtk-icon-btn.danger:hover {
-      background: #ffebe9 !important;
-      color: #cf222e !important;
-    }
-    .ghtk-icon-btn svg {
-      width: var(--ghtk-icon) !important;
-      height: var(--ghtk-icon) !important;
-      fill: currentColor !important;
-    }
-
-    .ghtk-btn {
-      display: inline-flex !important;
-      align-items: center !important;
-      justify-content: center !important;
-      height: var(--ghtk-ctl-h) !important;
-      padding: 0 12px !important;
-      border-radius: var(--ghtk-ctl-radius) !important;
-      border: 1px solid var(--borderColor-default, #d0d7de) !important;
-      background: var(--bgColor-muted, #f6f8fa) !important;
-      color: var(--fgColor-default, #1f2328) !important;
-      font-size: var(--ghtk-ctl-font) !important;
-      font-weight: 500 !important;
-      font-family: inherit !important;
-      cursor: pointer !important;
-      text-decoration: none !important;
-      white-space: nowrap !important;
-      box-sizing: border-box !important;
-      line-height: 1 !important;
-      min-width: 76px !important;
-    }
-    .ghtk-btn:hover { background: var(--bgColor-neutral-muted, #818b981f) !important; }
-    .ghtk-btn:disabled { opacity: 0.5 !important; cursor: not-allowed !important; }
-    .ghtk-btn.primary {
-      background: #0969da !important;
-      color: #fff !important;
-      border-color: #0969da !important;
-    }
-    .ghtk-btn.primary:hover { background: #0860ca !important; }
-    .ghtk-btn.success {
-      background: #1a7f37 !important;
-      color: #fff !important;
-      border-color: #1a7f37 !important;
-    }
-    .ghtk-btn.success:hover { background: #176f31 !important; }
-    .ghtk-btn.danger {
-      color: #cf222e !important;
-      border-color: #ffcecb !important;
-      background: #fff !important;
-    }
-    .ghtk-btn.danger:hover { background: #ffebe9 !important; }
-    /* 危险实心按钮：用于删除类二次确认 */
-    .ghtk-btn.danger-solid {
-      background: #cf222e !important;
-      color: #fff !important;
-      border-color: #cf222e !important;
-    }
-    .ghtk-btn.danger-solid:hover { background: #a40e26 !important; }
-
-    /* 同排按钮等宽 */
-    .ghtk-btn-row {
-      display: flex !important;
-      gap: var(--ghtk-ctl-gap) !important;
-    }
-    .ghtk-btn-row .ghtk-btn { flex: 1 !important; }
-
-    .ghtk-plugin-item {
-      display: flex !important;
-      justify-content: space-between !important;
-      align-items: flex-start !important;
-      gap: 12px !important;
-      padding: 12px 0 !important;
-      border-bottom: 1px solid var(--borderColor-muted, #d8dee4) !important;
-    }
-    .ghtk-plugin-item:last-child { border-bottom: none !important; }
-    .ghtk-plugin-item .desc {
-      font-size: 11px !important;
-      color: var(--fgColor-muted, #59636e) !important;
-      margin-top: 3px !important;
-      line-height: 1.4 !important;
-    }
-    /* 启用/禁用开关：GitHub 风格 */
-    .ghtk-switch {
-      flex-shrink: 0 !important;
-      width: 40px !important;
-      height: 22px !important;
-      border: 1px solid var(--borderColor-default, #d0d7de) !important;
-      border-radius: 11px !important;
-      background: var(--bgColor-muted, #f6f8fa) !important;
-      cursor: pointer !important;
-      position: relative !important;
-      padding: 0 !important;
-      transition: background .15s, border-color .15s !important;
-      box-sizing: border-box !important;
-    }
-    .ghtk-switch-knob {
-      position: absolute !important;
-      top: 2px !important;
-      left: 2px !important;
-      width: 16px !important;
-      height: 16px !important;
-      border-radius: 50% !important;
-      background: #fff !important;
-      box-shadow: 0 1px 2px rgba(31,35,40,.2) !important;
-      transition: left .15s ease !important;
-    }
-    .ghtk-switch.on {
-      background: #0969da !important;
-      border-color: #0969da !important;
-    }
-    .ghtk-switch.on .ghtk-switch-knob {
-      left: 20px !important;
-    }
-
-    .ghtk-modal-mask {
-      position: fixed !important;
-      inset: 0 !important;
-      background: rgba(0,0,0,.45) !important;
-      z-index: 2147483647 !important;
-      display: flex !important;
-      align-items: center !important;
-      justify-content: center !important;
-      animation: ghtk-fade .15s ease !important;
-    }
-    @keyframes ghtk-fade {
-      from { opacity: 0; }
-      to { opacity: 1; }
-    }
-    .ghtk-modal {
-      width: 340px !important;
-      max-width: 90vw !important;
-      background: var(--bgColor-default, #fff) !important;
-      border-radius: 12px !important;
-      box-shadow: 0 16px 48px rgba(0,0,0,.25) !important;
-      overflow: hidden !important;
-      animation: ghtk-scale .15s ease !important;
-    }
-    /* 跟随面板：遮罩只盖住面板区域，内边距收窄避免溢出 */
-    .ghtk-modal-mask.in-panel {
-      background: rgba(31,35,40,.28) !important;
-      padding: 12px !important;
-      animation: ghtk-fade .12s ease !important;
-    }
-    .ghtk-modal-mask.in-panel .ghtk-modal {
-      width: 100% !important;
-      max-width: 340px !important;
-      max-height: 100% !important;
-      display: flex !important;
-      flex-direction: column !important;
-    }
-    .ghtk-modal-mask.in-panel .ghtk-modal-body {
-      overflow-y: auto !important;
-      min-height: 0 !important;
-    }
-    @keyframes ghtk-scale {
-      from { opacity: 0; transform: scale(.95); }
-      to { opacity: 1; transform: none; }
-    }
-    .ghtk-modal-header {
-      display: flex !important;
-      align-items: center !important;
-      justify-content: space-between !important;
-      padding: 14px 16px !important;
-      border-bottom: 1px solid var(--borderColor-muted, #d8dee4) !important;
-    }
-    .ghtk-modal-title {
-      font-weight: 600 !important;
-      font-size: 14px !important;
-    }
-    .ghtk-modal-close {
-      width: var(--ghtk-ctl-h) !important;
-      height: var(--ghtk-ctl-h) !important;
-      border: none !important;
-      background: none !important;
-      border-radius: var(--ghtk-ctl-radius) !important;
-      cursor: pointer !important;
-      color: var(--fgColor-muted, #59636e) !important;
-      font-size: 15px !important;
-    }
-    .ghtk-modal-close:hover {
-      background: var(--bgColor-neutral-muted, #818b981f) !important;
-    }
-    .ghtk-modal-body { padding: 16px !important; }
-    .ghtk-modal-content {
-      font-size: 13px !important;
-      line-height: 1.5 !important;
-      margin-bottom: 12px !important;
-      color: var(--fgColor-default, #1f2328) !important;
-    }
-    .ghtk-modal-input {
-      width: 100% !important;
-      height: var(--ghtk-ctl-h) !important;
-      padding: 0 10px !important;
-      border: 1px solid var(--borderColor-default, #d0d7de) !important;
-      border-radius: var(--ghtk-ctl-radius) !important;
-      font-size: var(--ghtk-ctl-font) !important;
-      box-sizing: border-box !important;
-      background: var(--bgColor-default, #fff) !important;
-      color: var(--fgColor-default, #1f2328) !important;
-    }
-    .ghtk-modal-input:focus {
-      outline: 2px solid #0969da !important;
-      outline-offset: -1px !important;
-    }
-    .ghtk-modal-footer {
-      display: flex !important;
-      justify-content: flex-end !important;
-      gap: var(--ghtk-ctl-gap) !important;
-      padding: 12px 16px !important;
-      border-top: 1px solid var(--borderColor-muted, #d8dee4) !important;
-      background: var(--bgColor-muted, #f6f8fa) !important;
-    }
-    .ghtk-modal-footer .ghtk-btn { min-width: 76px !important; }
-
-    /* ===== 气泡（about 完整信息） ===== */
-    .ghtk-popover {
-      position: fixed !important;
-      /* 必须高于面板（2147483647），否则会被面板遮住 */
-      z-index: 2147483647 !important;
-      width: 328px !important;
-      max-height: 440px !important;
-      background: var(--bgColor-default, #fff) !important;
-      border: 1px solid var(--borderColor-default, #d0d7de) !important;
-      border-radius: 12px !important;
-      box-shadow: 0 12px 32px rgba(31,35,40,.22) !important;
-      display: flex !important;
-      flex-direction: column !important;
-      overflow: hidden !important;
-      font-size: 12px !important;
-      color: var(--fgColor-default, #1f2328) !important;
-      animation: ghtk-pop-in .13s ease-out !important;
-    }
-    @keyframes ghtk-pop-in {
-      from { opacity: 0; transform: translateY(-4px); }
-      to { opacity: 1; transform: none; }
-    }
-    .ghtk-pop-arrow {
-      position: absolute !important;
-      top: -6px !important;
-      width: 10px !important;
-      height: 10px !important;
-      background: #fff !important;
-      border-left: 1px solid var(--borderColor-default, #d0d7de) !important;
-      border-top: 1px solid var(--borderColor-default, #d0d7de) !important;
-      transform: rotate(45deg) !important;
-      z-index: 1 !important;
-    }
-    .ghtk-pop-arrow.up {
-      top: auto !important;
-      border-left: none !important;
-      border-top: none !important;
-      border-right: 1px solid var(--borderColor-default, #d0d7de) !important;
-      border-bottom: 1px solid var(--borderColor-default, #d0d7de) !important;
-    }
-    .ghtk-pop-head {
-      display: flex !important;
-      align-items: center !important;
-      gap: 8px !important;
-      padding: 11px 12px 9px !important;
-      border-bottom: 1px solid var(--borderColor-muted, #d8dee4) !important;
-      flex-shrink: 0 !important;
-    }
-    .ghtk-pop-title {
-      flex: 1 !important;
-      min-width: 0 !important;
-      font-size: 12.5px !important;
-      font-weight: 600 !important;
-      overflow: hidden !important;
-      text-overflow: ellipsis !important;
-      white-space: nowrap !important;
-    }
-    .ghtk-pop-close {
-      width: 24px !important;
-      height: 24px !important;
-      font-size: 13px !important;
-      flex-shrink: 0 !important;
-    }
-    .ghtk-pop-body {
-      padding: 11px 12px !important;
-      overflow-y: auto !important;
-      min-height: 0 !important;
-      flex: 1 !important;
-    }
-    .ghtk-pop-body::-webkit-scrollbar { width: 6px !important; }
-    .ghtk-pop-body::-webkit-scrollbar-thumb {
-      background: var(--borderColor-default, #d0d7de) !important;
-      border-radius: 3px !important;
-    }
-    .ghtk-pop-desc {
-      font-size: 11.5px !important;
-      line-height: 1.6 !important;
-      color: var(--fgColor-default, #1f2328) !important;
-      margin-bottom: 10px !important;
-      word-break: break-word !important;
-      overflow-wrap: anywhere !important;
-    }
-    .ghtk-pop-grid {
-      display: grid !important;
-      grid-template-columns: 1fr 1fr !important;
-      gap: 7px 10px !important;
-      margin-bottom: 10px !important;
-    }
-    .ghtk-pop-cell { min-width: 0 !important; }
-    .ghtk-pop-k {
-      font-size: 9.5px !important;
-      color: var(--fgColor-muted, #59636e) !important;
-      text-transform: uppercase !important;
-      letter-spacing: .4px !important;
-      margin-bottom: 1px !important;
-    }
-    .ghtk-pop-v {
-      font-size: 11px !important;
-      font-weight: 600 !important;
-      color: var(--fgColor-default, #1f2328) !important;
-      overflow: hidden !important;
-      text-overflow: ellipsis !important;
-      white-space: nowrap !important;
-    }
-    .ghtk-pop-sec {
-      font-size: 9.5px !important;
-      font-weight: 600 !important;
-      color: var(--fgColor-muted, #59636e) !important;
-      letter-spacing: .5px !important;
-      text-transform: uppercase !important;
-      margin-bottom: 5px !important;
-    }
-    .ghtk-pop-topics {
-      display: flex !important;
-      flex-wrap: wrap !important;
-      gap: 4px !important;
-      margin-bottom: 10px !important;
-    }
-    .ghtk-pop-home {
-      font-size: 11px !important;
-      margin-bottom: 2px !important;
-    }
-    .ghtk-pop-home a {
-      color: #0969da !important;
-      text-decoration: none !important;
-      word-break: break-all !important;
-    }
-    .ghtk-pop-home a:hover { text-decoration: underline !important; }
-    .ghtk-pop-note {
-      font-size: 10.5px !important;
-      color: #9a6700 !important;
-      margin-top: 6px !important;
-    }
-    .ghtk-pop-foot {
-      display: flex !important;
-      gap: 6px !important;
-      padding: 9px 12px !important;
-      border-top: 1px solid var(--borderColor-muted, #d8dee4) !important;
-      background: var(--bgColor-muted, #f6f8fa) !important;
-      flex-shrink: 0 !important;
-    }
-    .ghtk-pop-foot .ghtk-btn {
-      flex: 1 !important;
-      min-width: 0 !important;
-      height: 28px !important;
-      font-size: 11px !important;
-    }
-
-    .ghtk-toast {
-      position: fixed !important;
-      left: 50% !important;
-      bottom: 28px !important;
-      transform: translateX(-50%) translateY(10px) !important;
-      padding: 8px 16px !important;
-      border-radius: 8px !important;
-      background: #24292f !important;
-      color: #fff !important;
-      font-size: 13px !important;
-      z-index: 2147483647 !important;
-      opacity: 0 !important;
-      transition: opacity .2s, transform .2s !important;
-      pointer-events: none !important;
-      max-width: 80vw !important;
-      text-align: center !important;
-    }
-    .ghtk-toast.show {
-      opacity: 1 !important;
-      transform: translateX(-50%) translateY(0) !important;
-    }
-
-    .ghtk-empty {
-      font-size: 12px !important;
-      color: var(--fgColor-muted, #59636e) !important;
-      padding: 20px 0 !important;
-      text-align: center !important;
-      line-height: 1.5 !important;
-    }
-
-    /* ===== 加速 Tab：仓库地址 + ego 克隆 ===== */
-    .ghtk-accel-setting {
-      padding: 12px 16px !important;
-      border-bottom: 1px solid var(--borderColor-muted, #d8dee4) !important;
-    }
-    .ghtk-accel-setting label {
-      font-size: var(--ghtk-fs-label) !important;
-      color: var(--fgColor-muted, #59636e) !important;
-      display: block !important;
-      margin-bottom: 6px !important;
-    }
-    .ghtk-accel-body {
-      padding: 12px 16px 16px !important;
-    }
-    .ghtk-accel-repo {
-      display: flex !important;
-      flex-direction: column !important;
-      gap: 10px !important;
-      margin-bottom: 0 !important;
-    }
-    .ghtk-accel-url {
-      font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace !important;
-      font-size: var(--ghtk-fs-mono) !important;
-      word-break: break-all !important;
-      line-height: 1.5 !important;
-      padding: 8px 10px !important;
-      margin: 0 !important;
-      background: var(--bgColor-muted, #f6f8fa) !important;
-      border-radius: var(--ghtk-ctl-radius) !important;
-      color: var(--fgColor-default, #1f2328) !important;
-    }
-    .ghtk-divider {
-      height: 1px !important;
-      background: var(--borderColor-muted, #d8dee4) !important;
-      margin: var(--ghtk-gap-lg) 0 !important;
-    }
-    .ghtk-ego {
-      display: flex !important;
-      flex-direction: column !important;
-      gap: 12px !important;
-    }
-    /* 命令框单独加一点上方留白，和身份输入框拉开层次 */
-    .ghtk-ego .ghtk-cmd-wrap {
-      margin-top: 2px !important;
-    }
-    /* 复制按钮与上方命令框、下方说明的关系更清晰 */
-    .ghtk-ego #ghtk-copy-ego {
-      margin-top: 2px !important;
-    }
-    .ghtk-ego-head {
-      display: flex !important;
-      align-items: center !important;
-      justify-content: space-between !important;
-      gap: var(--ghtk-gap) !important;
-      margin-bottom: 0 !important;
-    }
-    .ghtk-ego-title {
-      font-size: var(--ghtk-fs-label) !important;
-      font-weight: 600 !important;
-      color: var(--fgColor-default, #1f2328) !important;
-      flex-shrink: 0 !important;
-    }
-    /* 分段控件：高度与其它控件对齐（30px） */
-    .ghtk-seg {
-      display: flex !important;
-      width: 118px !important;
-      height: var(--ghtk-ctl-h) !important;
-      flex-shrink: 0 !important;
-      border: 1px solid var(--borderColor-default, #d0d7de) !important;
-      border-radius: var(--ghtk-ctl-radius) !important;
-      overflow: hidden !important;
-      background: var(--bgColor-muted, #f6f8fa) !important;
-      box-sizing: border-box !important;
-    }
-    .ghtk-seg button {
-      flex: 1 !important;
-      height: 100% !important;
-      border: none !important;
-      background: none !important;
-      font-size: var(--ghtk-fs-small) !important;
-      font-weight: 500 !important;
-      font-family: inherit !important;
-      color: var(--fgColor-muted, #59636e) !important;
-      cursor: pointer !important;
-      padding: 0 !important;
-    }
-    .ghtk-seg button.on {
-      background: var(--bgColor-default, #fff) !important;
-      color: #0969da !important;
-      font-weight: 600 !important;
-      box-shadow: 0 1px 3px rgba(31,35,40,.1) !important;
-    }
-    /* 身份输入框 */
-    .ghtk-field-input {
-      width: 100% !important;
-      height: var(--ghtk-ctl-h) !important;
-      padding: 0 10px !important;
-      margin: 0 !important;
-      border: 1px solid var(--borderColor-default, #d0d7de) !important;
-      border-radius: var(--ghtk-ctl-radius) !important;
-      font-size: var(--ghtk-ctl-font) !important;
-      font-family: inherit !important;
-      color: var(--fgColor-default, #1f2328) !important;
-      background: var(--bgColor-default, #fff) !important;
-      box-sizing: border-box !important;
-    }
-    .ghtk-field-input:focus {
-      outline: 2px solid #0969da !important;
-      outline-offset: -1px !important;
-    }
-    /* 命令预览：固定高度 + 横向滚动，绝不撑高面板 */
-    .ghtk-cmd-wrap {
-      position: relative !important;
-      margin: 0 !important;
-    }
-    .ghtk-cmd {
-      height: 38px !important;
-      padding: 0 10px !important;
-      border: 1px solid var(--borderColor-default, #d0d7de) !important;
-      border-radius: var(--ghtk-ctl-radius) !important;
-      background: var(--bgColor-muted, #f6f8fa) !important;
-      font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace !important;
-      font-size: var(--ghtk-fs-mono) !important;
-      line-height: 36px !important;
-      color: var(--fgColor-default, #1f2328) !important;
-      white-space: pre !important;
-      overflow-x: auto !important;
-      overflow-y: hidden !important;
-      box-sizing: border-box !important;
-    }
-    .ghtk-cmd::-webkit-scrollbar { height: 4px !important; }
-    .ghtk-cmd::-webkit-scrollbar-thumb {
-      background: var(--borderColor-default, #d0d7de) !important;
-      border-radius: 2px !important;
-    }
-    .ghtk-cmd-prompt {
-      color: var(--fgColor-muted, #59636e) !important;
-      margin-right: 6px !important;
-    }
-    .ghtk-hint-list {
-      margin-top: 4px !important;
-      padding-top: 10px !important;
-      border-top: 1px dashed var(--borderColor-muted, #d8dee4) !important;
-      font-size: var(--ghtk-fs-small) !important;
-      line-height: 1.6 !important;
-      color: var(--fgColor-muted, #59636e) !important;
-    }
-    .ghtk-hint-list code {
-      font-family: ui-monospace, SFMono-Regular, monospace !important;
-      font-size: var(--ghtk-fs-small) !important;
-      background: #afb8c133 !important;
-      padding: 1px 4px !important;
-      border-radius: 3px !important;
-    }
-
-    @media (max-width: 480px) {
-      .ghtk-panel {
-        left: 8px !important;
-        right: 8px !important;
-        width: auto !important;
-        height: 70vh !important;
-        bottom: 80px !important;
-        top: auto !important;
-      }
-    }
+      left: 8px;
+      right: 8px;
+      top: auto;
+      bottom: 80px;
+      width: auto;
+      height: 70vh;
+    }
+    .ghtk-rail { flex-basis: 128px; width: 128px; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    #ghtk-root *,
+    #ghtk-root *::before,
+    #ghtk-root *::after {
+      animation: none;
+      transition: none;
+    }
+    #ghtk-root .ghtk-spinner { animation: ghtk-spin 1.6s linear infinite; }
+  }
+  @media (hover: none) {
+    .ghtk-drow-rm { opacity: 1; }
+  }
 `;
+
+/** 给每条声明补 !important（跳过自定义属性与 @keyframes，keyframes 里的 !important 会被浏览器丢弃） */
+function important(css: string): string {
+  const frames: string[] = [];
+  const masked = css.replace(/@keyframes[^{]*\{(?:[^{}]*\{[^{}]*\})*[^{}]*\}/g, (m) => {
+    frames.push(m);
+    return '@@GHTK_FRAME_' + (frames.length - 1) + '@@';
+  });
+  const out = masked.replace(
+    /((?:^|[{;]|\*\/)\s*)(-?[a-z][a-z-]*\s*:\s*)([^;{}]+?)(\s*)(?=[;}])/g,
+    (m, pre: string, prop: string, val: string, ws: string) =>
+      /!important$/.test(val) ? m : pre + prop + val + ' !important' + ws
+  );
+  return out.replace(/@@GHTK_FRAME_(\d+)@@/g, (_m, i: string) => frames[Number(i)]);
+}
+
+const CSS = important(CSS_SOURCE);
 
 /** 注入样式表（幂等 + 自愈：被页面移除后自动补回） */
 export function injectGlobalStyles(): void {
@@ -1458,7 +1108,7 @@ export function injectGlobalStyles(): void {
   style.textContent = CSS;
   (document.head || document.documentElement).appendChild(style);
 
-  // 观察 head，防止 GitHub 软导航或其它脚本清掉我们的样式
+  // 观察文档，防止 GitHub 软导航或其它脚本清掉我们的样式
   if (!observerStarted) {
     observerStarted = true;
     const ensure = () => {

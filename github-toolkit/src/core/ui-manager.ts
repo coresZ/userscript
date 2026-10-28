@@ -1,45 +1,63 @@
 import { injectGlobalStyles, getRoot } from './styles';
 import { Logger } from './logger';
+import { escapeHtml } from './html';
+import { ICON } from './icons';
+import { setBaseLayer, closeAllLayers, closeTransientLayers } from './layers';
 
 const FAB_ICON = `<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M15 2.75a.75.75 0 0 1-.75.75h-4a.75.75 0 0 1 0-1.5h4a.75.75 0 0 1 .75.75Zm-8.5.75v1.25a.75.75 0 0 0 1.5 0v-4a.75.75 0 0 0-1.5 0V2H1.75a.75.75 0 0 0 0 1.5H6.5Zm1.25 5.5a.75.75 0 0 0 0-1.5h-6a.75.75 0 0 0 0 1.5h6ZM15 8a.75.75 0 0 1-.75.75H11.5V10a.75.75 0 1 1-1.5 0V6a.75.75 0 0 1 1.5 0v1.25h2.75A.75.75 0 0 1 15 8Zm-9 5.25v-2a.75.75 0 0 0-1.5 0v1.25H1.75a.75.75 0 1 0 0 1.5H4.5v1.25a.75.75 0 0 0 1.5 0v-2Zm9 2v-2.25a.75.75 0 0 0-1.5 0V15h-4a.75.75 0 0 0 0 1.5h4a.75.75 0 0 0 .75-.75v-1.5Z"/></svg>`;
 
-/** 云图标（stroke 风格，currentColor 描边） */
-const CLOUD_ICON = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z"/></svg>`;
+/** 云图标（描边风格；.ghtk-stroke 防止被 reset 的 fill 覆盖成实心） */
+const CLOUD_ICON = `<svg class="ghtk-stroke" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z"/></svg>`;
 
 const FAB_POS_KEY = 'fab-position';
+/** 面板被拖动过才会记录；拖动悬浮球后清除，面板重新贴着悬浮球 */
+const PANEL_POS_KEY = 'panel-position';
 const FAB_SIZE = 48;
-const FAB_MARGIN = 8;
+const PANEL_W = 400;
+const PANEL_H = 560;
+const EDGE = 8;
 /** 拖动超过该距离才算拖拽，否则视为点击 */
 const DRAG_THRESHOLD = 4;
 
-interface FabPosition {
+interface Point {
   left: number;
   top: number;
+}
+
+function isPoint(v: unknown): v is Point {
+  return !!v && typeof (v as Point).left === 'number' && typeof (v as Point).top === 'number';
 }
 
 export class UIManager {
   panel: HTMLElement | null = null;
   private fab: HTMLButtonElement | null = null;
-  private fabPos: FabPosition | null = null;
+  private fabPos: Point | null = null;
   private suppressClick = false;
+  private resizeBound = false;
+  private toastEl: HTMLElement | null = null;
+  private toastTimer: ReturnType<typeof setTimeout> | null = null;
   /** 由主程序注入：点击悬浮球时切换面板 */
   onFabToggle: () => void = () => {};
   /** 由主程序注入：点击标题栏云图标时打开云端备份面板 */
   onCloudClick: () => void = () => {};
 
+  // ---------- 悬浮球 ----------
+
   createFab(): void {
-    if (this.fab && document.body.contains(this.fab)) return;
+    if (this.fab && this.fab.isConnected) return;
     injectGlobalStyles();
     document.querySelectorAll('.ghtk-fab').forEach((el) => el.remove());
 
-    this.fab = document.createElement('button');
-    this.fab.className = 'ghtk-fab';
-    this.fab.type = 'button';
-    this.fab.title = 'GitHub Toolkit（可拖动）';
-    this.fab.setAttribute('aria-label', 'GitHub Toolkit');
-    this.fab.innerHTML = FAB_ICON;
+    const fab = document.createElement('button');
+    fab.className = 'ghtk-fab';
+    fab.type = 'button';
+    fab.title = 'GitHub Toolkit（可拖动）';
+    fab.setAttribute('aria-label', 'GitHub Toolkit');
+    fab.setAttribute('aria-expanded', this.panel ? 'true' : 'false');
+    fab.innerHTML = FAB_ICON;
+    this.fab = fab;
 
-    this.fab.addEventListener(
+    fab.addEventListener(
       'click',
       (e) => {
         e.preventDefault();
@@ -60,226 +78,211 @@ export class UIManager {
       true
     );
 
-    getRoot().appendChild(this.fab);
-    this.restoreFabPosition();
-    this.enableFabDrag();
-    window.addEventListener('resize', () => this.clampFabPosition(), { passive: true });
-  }
+    getRoot().appendChild(fab);
+    const saved = GM_getValue(FAB_POS_KEY, null);
+    if (isPoint(saved)) this.applyFabPos(saved);
+    this.enableFabDrag(fab);
 
-  /** 读取并应用上次拖拽的位置 */
-  private restoreFabPosition(): void {
-    const saved = GM_getValue(FAB_POS_KEY, null) as FabPosition | null;
-    if (saved && typeof saved.left === 'number' && typeof saved.top === 'number') {
-      this.applyFabPosition(saved);
+    if (!this.resizeBound) {
+      this.resizeBound = true;
+      window.addEventListener(
+        'resize',
+        () => {
+          if (this.fabPos) this.applyFabPos(this.fabPos);
+          if (this.panel) {
+            const r = this.panel.getBoundingClientRect();
+            this.setPanelPos(this.clampPanelPos({ left: r.left, top: r.top }));
+          }
+        },
+        { passive: true }
+      );
     }
   }
 
-  private applyFabPosition(pos: FabPosition): void {
+  private applyFabPos(pos: Point): void {
     if (!this.fab) return;
-    const clamped = this.clamp(pos);
-    this.fabPos = clamped;
-    this.fab.style.left = clamped.left + 'px';
-    this.fab.style.top = clamped.top + 'px';
+    const maxLeft = Math.max(EDGE, window.innerWidth - FAB_SIZE - EDGE);
+    const maxTop = Math.max(EDGE, window.innerHeight - FAB_SIZE - EDGE);
+    const p = {
+      left: Math.min(Math.max(EDGE, pos.left), maxLeft),
+      top: Math.min(Math.max(EDGE, pos.top), maxTop),
+    };
+    this.fabPos = p;
+    this.fab.style.left = p.left + 'px';
+    this.fab.style.top = p.top + 'px';
     this.fab.style.right = 'auto';
     this.fab.style.bottom = 'auto';
   }
 
-  private clamp(pos: FabPosition): FabPosition {
-    const maxLeft = Math.max(FAB_MARGIN, window.innerWidth - FAB_SIZE - FAB_MARGIN);
-    const maxTop = Math.max(FAB_MARGIN, window.innerHeight - FAB_SIZE - FAB_MARGIN);
-    return {
-      left: Math.min(Math.max(FAB_MARGIN, pos.left), maxLeft),
-      top: Math.min(Math.max(FAB_MARGIN, pos.top), maxTop),
-    };
-  }
-
-  /** 视口变化后把悬浮球拉回可见区域 */
-  private clampFabPosition(): void {
-    if (!this.fabPos || !this.fab) return;
-    const next = this.clamp(this.fabPos);
-    if (next.left !== this.fabPos.left || next.top !== this.fabPos.top) {
-      this.applyFabPosition(next);
-    }
-  }
-
-  private enableFabDrag(): void {
-    const fab = this.fab;
-    if (!fab) return;
-
+  private enableFabDrag(fab: HTMLButtonElement): void {
     fab.addEventListener('pointerdown', (e) => {
       if (e.button !== 0) return;
       const rect = fab.getBoundingClientRect();
-      const start = {
-        x: e.clientX,
-        y: e.clientY,
-        left: rect.left,
-        top: rect.top,
-      };
-      let dragging = false;
-
-      try {
-        fab.setPointerCapture(e.pointerId);
-      } catch {
-        /* 忽略：部分环境不支持 */
-      }
-
+      const sx = e.clientX;
+      const sy = e.clientY;
+      let moved = false;
       const onMove = (ev: PointerEvent) => {
-        const dx = ev.clientX - start.x;
-        const dy = ev.clientY - start.y;
-        if (!dragging && Math.hypot(dx, dy) < DRAG_THRESHOLD) return;
-        dragging = true;
-        fab.classList.add('dragging');
-        this.applyFabPosition({ left: start.left + dx, top: start.top + dy });
+        const dx = ev.clientX - sx;
+        const dy = ev.clientY - sy;
+        if (!moved && Math.hypot(dx, dy) < DRAG_THRESHOLD) return;
+        moved = true;
+        this.applyFabPos({ left: rect.left + dx, top: rect.top + dy });
       };
-
-      const onUp = (ev: PointerEvent) => {
-        fab.removeEventListener('pointermove', onMove);
-        fab.removeEventListener('pointerup', onUp);
-        fab.removeEventListener('pointercancel', onUp);
-        fab.classList.remove('dragging');
-        try {
-          fab.releasePointerCapture(ev.pointerId);
-        } catch {
-          /* 忽略 */
-        }
-        if (dragging) {
-          this.suppressClick = true;
-          if (this.fabPos) {
-            GM_setValue(FAB_POS_KEY, this.fabPos);
-            // 面板开着就跟着移动
-            if (this.panel) this.placePanelNearFab();
-          }
-        }
+      const onUp = () => {
+        document.removeEventListener('pointermove', onMove);
+        document.removeEventListener('pointerup', onUp);
+        document.removeEventListener('pointercancel', onUp);
+        if (!moved) return;
+        // click 紧跟 pointerup 同步派发；没有 click（在别处松手）时由定时器复位
+        this.suppressClick = true;
+        setTimeout(() => (this.suppressClick = false), 0);
+        if (this.fabPos) GM_setValue(FAB_POS_KEY, this.fabPos);
+        GM_deleteValue(PANEL_POS_KEY);
+        if (this.panel) this.positionPanel();
       };
-
-      fab.addEventListener('pointermove', onMove);
-      fab.addEventListener('pointerup', onUp);
-      fab.addEventListener('pointercancel', onUp);
+      document.addEventListener('pointermove', onMove);
+      document.addEventListener('pointerup', onUp);
+      document.addEventListener('pointercancel', onUp);
     });
   }
 
-  /** 面板贴着悬浮球展开，空间不足时自动翻到另一侧 */
-  private placePanelNearFab(): void {
-    if (!this.panel || !this.fab) return;
-    const rect = this.fab.getBoundingClientRect();
-    const pw = this.panel.offsetWidth || 400;
-    const ph = this.panel.offsetHeight || 560;
-    const gap = 12;
-    const margin = 8;
+  // ---------- 面板 ----------
 
-    // 水平：优先与球左对齐，右侧放不下则右对齐
-    let left = rect.left;
-    if (left + pw > window.innerWidth - margin) left = rect.right - pw;
-    left = Math.min(Math.max(margin, left), Math.max(margin, window.innerWidth - pw - margin));
+  showPanel(html: string, title = 'GitHub Toolkit'): void {
+    injectGlobalStyles();
+    this.removePanel();
 
-    // 垂直：优先在球上方展开，上方不够则下方
-    let top = rect.top - ph - gap;
-    if (top < margin) top = rect.bottom + gap;
-    if (top + ph > window.innerHeight - margin) {
-      top = Math.max(margin, window.innerHeight - ph - margin);
-    }
+    const panel = document.createElement('div');
+    panel.className = 'ghtk-panel';
+    panel.setAttribute('role', 'dialog');
+    panel.setAttribute('aria-label', title);
+    panel.innerHTML = `
+      <div class="ghtk-panel-head">
+        <span class="ghtk-panel-title">${escapeHtml(title)}</span>
+        <span class="ghtk-head-actions">
+          <button class="ghtk-icon-btn ghtk-cloud-btn" type="button" title="云端备份" aria-label="云端备份">${CLOUD_ICON}</button>
+          <button class="ghtk-icon-btn ghtk-close-btn" type="button" title="关闭（Esc）" aria-label="关闭">${ICON.x}</button>
+        </span>
+      </div>
+      <div class="ghtk-panel-body">${html}</div>
+    `;
+    getRoot().appendChild(panel);
+    this.panel = panel;
+    this.positionPanel();
 
-    this.panel.style.left = left + 'px';
-    this.panel.style.top = top + 'px';
+    panel.querySelector('.ghtk-close-btn')?.addEventListener('click', () => this.hidePanel());
+    panel.querySelector('.ghtk-cloud-btn')?.addEventListener('click', () => this.onCloudClick());
+    this.enablePanelDrag(panel);
+    setBaseLayer(() => this.hidePanel());
+    this.fab?.setAttribute('aria-expanded', 'true');
+  }
+
+  /** 只拆掉面板 DOM（重建用）：关掉气泡/菜单等临时层，保留打开中的对话框 */
+  private removePanel(): void {
+    closeTransientLayers();
+    this.panel?.remove();
+    this.panel = null;
+  }
+
+  /** 关闭面板：连同所有弹层一起关 */
+  hidePanel(): void {
+    if (!this.panel) return;
+    const hadFocus = this.panel.contains(document.activeElement);
+    closeAllLayers();
+    this.panel?.remove();
+    this.panel = null;
+    setBaseLayer(null);
+    this.fab?.setAttribute('aria-expanded', 'false');
+    if (hadFocus) this.fab?.focus({ preventScroll: true });
+  }
+
+  /** 有拖动记录用记录的位置，否则贴着悬浮球（优先上方，放不下翻到下方） */
+  private positionPanel(): void {
+    if (!this.panel) return;
+    const saved = GM_getValue(PANEL_POS_KEY, null);
+    this.setPanelPos(this.clampPanelPos(isPoint(saved) ? saved : this.nearFab()));
+  }
+
+  private nearFab(): Point {
+    const w = this.panel?.offsetWidth || PANEL_W;
+    const h = this.panel?.offsetHeight || PANEL_H;
+    const fab = this.fab?.getBoundingClientRect();
+    if (!fab) return { left: window.innerWidth - w - 20, top: window.innerHeight - h - 84 };
+    let left = fab.right - w;
+    if (left < EDGE) left = fab.left;
+    let top = fab.top - h - 12;
+    if (top < EDGE) top = fab.bottom + 12;
+    return { left, top };
+  }
+
+  private clampPanelPos(p: Point): Point {
+    const w = this.panel?.offsetWidth || PANEL_W;
+    const h = this.panel?.offsetHeight || PANEL_H;
+    return {
+      left: Math.min(Math.max(EDGE, p.left), Math.max(EDGE, window.innerWidth - w - EDGE)),
+      top: Math.min(Math.max(EDGE, p.top), Math.max(EDGE, window.innerHeight - h - EDGE)),
+    };
+  }
+
+  private setPanelPos(p: Point): void {
+    if (!this.panel) return;
+    this.panel.style.left = Math.round(p.left) + 'px';
+    this.panel.style.top = Math.round(p.top) + 'px';
     this.panel.style.right = 'auto';
     this.panel.style.bottom = 'auto';
   }
 
-  showPanel(contentHtml: string, title = 'GitHub Toolkit'): void {
-    injectGlobalStyles();
-    this.hidePanel();
-
-    this.panel = document.createElement('div');
-    this.panel.className = 'ghtk-panel';
-    this.panel.innerHTML = `
-      <header>
-        <span class="title">${title}</span>
-        <span class="head-actions">
-          <button class="cloud-btn" type="button" title="云端备份" aria-label="云端备份">${CLOUD_ICON}</button>
-          <button class="close-btn" type="button" title="关闭">✕</button>
-        </span>
-      </header>
-      <div class="body">${contentHtml || ''}</div>
-    `;
-
-    // 先按默认位置挂载，再贴近悬浮球定位（需要 element 已入 DOM 才能量尺寸）
-    this.panel.style.right = '20px';
-    this.panel.style.bottom = '84px';
-    this.panel.style.left = 'auto';
-    this.panel.style.top = 'auto';
-
-    getRoot().appendChild(this.panel);
-    this.placePanelNearFab();
-
-    this.panel.querySelector('.close-btn')!.addEventListener('click', (e) => {
-      e.stopPropagation();
-      this.hidePanel();
-    });
-
-    this.onCloudClick = this.onCloudClick || (() => {});
-    this.panel.querySelector('.cloud-btn')!.addEventListener('click', (e) => {
-      e.stopPropagation();
-      this.onCloudClick();
-    });
-
-    this.enableDrag(this.panel.querySelector('header'));
-    document.addEventListener('keydown', this.onEsc);
-  }
-
-  private onEsc = (e: KeyboardEvent) => {
-    if (e.key === 'Escape') this.hidePanel();
-  };
-
-  hidePanel(): void {
-    if (!this.panel) return;
-    this.panel.remove();
-    this.panel = null;
-    document.removeEventListener('keydown', this.onEsc);
-  }
-
-  private enableDrag(handle: Element | null): void {
-    if (!handle || !this.panel) return;
-    handle.addEventListener('mousedown', (ev) => {
-      const e = ev as MouseEvent;
-      if (e.button !== 0 || !this.panel) return;
-      const rect = this.panel.getBoundingClientRect();
-      const dragState = {
-        startX: e.clientX,
-        startY: e.clientY,
-        origLeft: rect.left,
-        origTop: rect.top,
-      };
-      this.panel.style.right = 'auto';
-      this.panel.style.bottom = 'auto';
-      this.panel.style.left = rect.left + 'px';
-      this.panel.style.top = rect.top + 'px';
-
-      const onMove = (ev2: MouseEvent) => {
-        if (!this.panel) return;
-        const dx = ev2.clientX - dragState.startX;
-        const dy = ev2.clientY - dragState.startY;
-        this.panel.style.left = Math.max(8, dragState.origLeft + dx) + 'px';
-        this.panel.style.top = Math.max(8, dragState.origTop + dy) + 'px';
+  /** 拖动标题栏移动面板，松手后记住位置 */
+  private enablePanelDrag(panel: HTMLElement): void {
+    const head = panel.querySelector<HTMLElement>('.ghtk-panel-head');
+    if (!head) return;
+    head.addEventListener('pointerdown', (e) => {
+      if (e.button !== 0) return;
+      if ((e.target as HTMLElement).closest('button')) return;
+      if (window.matchMedia('(max-width: 480px)').matches) return;
+      e.preventDefault();
+      const rect = panel.getBoundingClientRect();
+      const sx = e.clientX;
+      const sy = e.clientY;
+      let moved = false;
+      const onMove = (ev: PointerEvent) => {
+        const dx = ev.clientX - sx;
+        const dy = ev.clientY - sy;
+        if (!moved && Math.hypot(dx, dy) < DRAG_THRESHOLD) return;
+        moved = true;
+        this.setPanelPos(this.clampPanelPos({ left: rect.left + dx, top: rect.top + dy }));
       };
       const onUp = () => {
-        document.removeEventListener('mousemove', onMove);
-        document.removeEventListener('mouseup', onUp);
+        document.removeEventListener('pointermove', onMove);
+        document.removeEventListener('pointerup', onUp);
+        document.removeEventListener('pointercancel', onUp);
+        if (!moved || !this.panel) return;
+        const r = this.panel.getBoundingClientRect();
+        GM_setValue(PANEL_POS_KEY, { left: Math.round(r.left), top: Math.round(r.top) });
       };
-      document.addEventListener('mousemove', onMove);
-      document.addEventListener('mouseup', onUp);
+      document.addEventListener('pointermove', onMove);
+      document.addEventListener('pointerup', onUp);
+      document.addEventListener('pointercancel', onUp);
     });
   }
+
+  // ---------- 提示条（单例：新提示替换旧提示） ----------
 
   toast(msg: string, duration = 2200): void {
     injectGlobalStyles();
-    const t = document.createElement('div');
-    t.className = 'ghtk-toast';
-    t.textContent = msg;
-    getRoot().appendChild(t);
-    requestAnimationFrame(() => t.classList.add('show'));
-    setTimeout(() => {
-      t.classList.remove('show');
-      setTimeout(() => t.remove(), 280);
-    }, duration);
+    let t = this.toastEl;
+    if (!t || !t.isConnected) {
+      t = document.createElement('div');
+      t.className = 'ghtk-toast';
+      t.setAttribute('role', 'status');
+      t.setAttribute('aria-live', 'polite');
+      getRoot().appendChild(t);
+      this.toastEl = t;
+    }
+    const el = t;
+    el.textContent = msg;
+    if (this.toastTimer) clearTimeout(this.toastTimer);
+    requestAnimationFrame(() => el.classList.add('show'));
+    this.toastTimer = setTimeout(() => el.classList.remove('show'), duration);
   }
 }
