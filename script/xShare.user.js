@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         X 推文一键生成分享卡片 & 视频深度解析助手 (多线程版)
 // @namespace    http://tampermonkey.net/
-// @version      6.12
+// @version      6.13
 // @description  自定义生成推文图片卡片，支持长文，新增视频极速无水印解析与直接强制下载本地（支持多线程并发，带真实进度）。入口整合进 X 原生「分享」下拉菜单。
 // @author       Assistant
 // @match        https://x.com/*
@@ -110,8 +110,26 @@
                 else if (b.type === 'divider') lines.push('---', '');
                 else if (b.type === 'image') lines.push(b.src ? '![](' + b.src + ')' : '', b.caption || '', '');
             });
-        } else if (data.contentPlain) {
-            lines.push(data.contentPlain, '');
+        } else {
+            if (data.contentPlain) lines.push(data.contentPlain, '');
+            // 普通帖贴图：正文后按序写入，便于云端 MD 带图（同步时会改写为托管地址）
+            (data.images || []).forEach(src => {
+                if (src) lines.push('![](' + src + ')', '');
+            });
+            (data.videos || []).forEach(src => {
+                if (src) lines.push('![](' + src + ')', '');
+            });
+            if (data.quoted) {
+                const q = data.quoted;
+                const qHead = [q.name, q.handle].filter(Boolean).join('  ');
+                if (qHead || q.content || (q.images && q.images.length)) {
+                    lines.push('> 引用 ' + (qHead || ''), '');
+                    if (q.content) lines.push(q.content.split(/\n/).map(l => '> ' + l).join('\n'), '');
+                    (q.images || []).forEach(src => {
+                        if (src) lines.push('![](' + src + ')', '');
+                    });
+                }
+            }
         }
         return lines.join('\n').trim() + '\n';
     }
@@ -1999,7 +2017,7 @@
                 <div class="scp-title">
                     <span class="scp-title-icon">${ICONS.cardSparkle}</span>
                     <span>推文分享卡片生成器</span>
-                    <span class="scp-version-badge">v6.12</span>
+                    <span class="scp-version-badge">v6.13</span>
                 </div>
                 <button id="scp-close" title="关闭窗口">${ICONS.close}</button>
             </div>
