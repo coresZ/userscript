@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         GitHub Toolkit
 // @namespace    github-toolkit
-// @version      2.9.0
+// @version      2.9.1
 // @author       Cores
 // @description  高内聚低耦合的 GitHub 模块化工具台（图标操作 + 复制上游链接）
 // @license      MIT
@@ -2235,7 +2235,7 @@
                 openIssues: d.open_issues_count ?? 0,
                 topics: Array.isArray(d.topics) ? d.topics : [],
                 archived: !!d.archived,
-                updatedAt: d.pushed_at ?? d.updated_at ?? null,
+                pushedAt: d.pushed_at ?? null,
                 ownerAvatar: d.owner?.avatar_url ?? null
               });
             } catch {
@@ -2411,8 +2411,8 @@
         <div class="ghtk-pop-desc">${escapeHtml(desc)}</div>
         <div class="ghtk-pop-grid">
           ${rows.map(
-    ([k, v]) => `<div class="ghtk-pop-cell">
-                <div class="ghtk-pop-k">${escapeHtml(k)}</div>
+    ([k, v, hint]) => `<div class="ghtk-pop-cell">
+                <div class="ghtk-pop-k"${hint ? ` title="${escapeHtml(hint)}"` : ""}>${escapeHtml(k)}</div>
                 <div class="ghtk-pop-v" title="${escapeHtml(v)}">${escapeHtml(v)}</div>
               </div>`
   ).join("")}
@@ -2606,6 +2606,9 @@
   }
   const fullOf = (b) => `${b.owner}/${b.repo}`;
   const keyOf = (s) => s.toLowerCase();
+  function isLater(a, b) {
+    return new Date(a).getTime() - new Date(b).getTime() > 36e5;
+  }
   function parseRepo(input) {
     const s = String(input || "").trim().replace(/^git@github\.com:/i, "").replace(/^https?:\/\/(www\.)?github\.com\//i, "").replace(/[?#].*$/, "");
     const parts = s.split("/").filter(Boolean);
@@ -2711,7 +2714,7 @@
   const UpstreamBindPlugin = {
     id: "upstream-bind",
     name: "上游/下游仓库绑定",
-    version: "2.9.0",
+    version: "2.9.1",
     description: "自动检测当前仓库上游，支持手动添加与上下游绑定",
     matches() {
       return true;
@@ -2970,7 +2973,7 @@
                    ${busy ? '<span class="ghtk-spinner" aria-hidden="true"></span>检测中…' : "绑定我的 Fork"}
                  </button>
                </div>` : "";
-          const when = last || about?.updatedAt || null;
+          const when = last || about?.pushedAt || null;
           const subParts = [`${downs.length} 个下游`];
           if (when) subParts.push(`${relativeTime(when)}更新`);
           if (!currentUser) subParts.push("未登录");
@@ -3179,13 +3182,17 @@
           const about = state.about.get(key);
           if (!about) return;
           const last = state.lastCommit.get(key);
+          const pushed = about.pushedAt;
+          const extra = [
+            ["最后提交", last ? `${formatDate(last)}（${relativeTime(last)}）` : "—"]
+          ];
+          if (pushed && (!last || isLater(pushed, last))) {
+            extra.push(["最近推送", `${formatDate(pushed)}（${relativeTime(pushed)}）`, "含其它分支的推送"]);
+          }
           showAboutPopover({
             about,
             anchor,
-            extraMeta: [
-              ["最近推送", about.updatedAt ? `${formatDate(about.updatedAt)}（${relativeTime(about.updatedAt)}）` : "—"],
-              ["最后提交", last ? `${formatDate(last)}（${relativeTime(last)}）` : "—"]
-            ],
+            extraMeta: extra,
             onClose: () => {
               if (state.dirty) renderDetail();
             }
@@ -3500,7 +3507,7 @@
   }
   const builtinPlugins = [UpstreamBindPlugin, AccelPlugin];
   const DEFAULT_ENABLED = ["upstream-bind", "github-accel"];
-  const TOOLKIT_VERSION = "2.9.0";
+  const TOOLKIT_VERSION = "2.9.1";
   const TAB_KEY = "panel-tab";
   const eventBus = new EventBus();
   const dom = new DOMHelper();

@@ -7,8 +7,8 @@ import type { RepoAbout } from './github-api';
 export interface AboutPopoverOptions {
   about: RepoAbout;
   anchor: HTMLElement;
-  /** 追加到信息网格末尾的行（如最近推送 / 最后提交） */
-  extraMeta?: Array<[string, string]>;
+  /** 追加到信息网格末尾的行，第三项是标签上的补充说明 */
+  extraMeta?: Array<[string, string, string?]>;
   /** 气泡关闭后回调（调用方用它补做被推迟的重绘） */
   onClose?: () => void;
 }
@@ -52,7 +52,7 @@ export function showAboutPopover({ about, anchor, extraMeta = [], onClose }: Abo
   }
   closePopover();
 
-  const rows: Array<[string, string]> = [
+  const rows: Array<[string, string, string?]> = [
     ['主语言', about.language || '—'],
     ['Star', compactNum(about.stars)],
     ['Fork', compactNum(about.forks)],
@@ -95,8 +95,8 @@ export function showAboutPopover({ about, anchor, extraMeta = [], onClose }: Abo
         <div class="ghtk-pop-grid">
           ${rows
             .map(
-              ([k, v]) => `<div class="ghtk-pop-cell">
-                <div class="ghtk-pop-k">${escapeHtml(k)}</div>
+              ([k, v, hint]) => `<div class="ghtk-pop-cell">
+                <div class="ghtk-pop-k"${hint ? ` title="${escapeHtml(hint)}"` : ''}>${escapeHtml(k)}</div>
                 <div class="ghtk-pop-v" title="${escapeHtml(v)}">${escapeHtml(v)}</div>
               </div>`
             )

@@ -22,7 +22,8 @@ export interface RepoAbout {
   openIssues: number;
   topics: string[];
   archived: boolean;
-  updatedAt: string | null;
+  /** 最近一次推送时间（含其它分支；不是默认分支的最后提交） */
+  pushedAt: string | null;
   ownerAvatar: string | null;
 }
 
@@ -217,7 +218,7 @@ export function fetchRepoAbout(owner: string, repo: string): Promise<RepoAbout |
               openIssues: d.open_issues_count ?? 0,
               topics: Array.isArray(d.topics) ? d.topics : [],
               archived: !!d.archived,
-              updatedAt: d.pushed_at ?? d.updated_at ?? null,
+              pushedAt: d.pushed_at ?? null,
               ownerAvatar: d.owner?.avatar_url ?? null,
             });
           } catch {

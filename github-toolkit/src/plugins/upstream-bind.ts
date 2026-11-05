@@ -23,6 +23,11 @@ function saveBindings(list: Binding[]): void {
 const fullOf = (b: Binding) => `${b.owner}/${b.repo}`;
 const keyOf = (s: string) => s.toLowerCase();
 
+/** a 是否比 b 晚 1 小时以上；两个时间不同源，差得久才值得单独说 */
+function isLater(a: string, b: string): boolean {
+  return new Date(a).getTime() - new Date(b).getTime() > 3600e3;
+}
+
 /** 解析 owner/repo、仓库链接或 SSH 地址；不合法返回 null */
 function parseRepo(input: string): { owner: string; repo: string } | null {
   const s = String(input || '')
@@ -184,7 +189,7 @@ function renderAbout(about: RepoAbout | null | undefined): string {
 export const UpstreamBindPlugin: Plugin = {
   id: 'upstream-bind',
   name: '上游/下游仓库绑定',
-  version: '2.9.0',
+  version: '2.9.1',
   description: '自动检测当前仓库上游，支持手动添加与上下游绑定',
   matches() {
     return true;
@@ -485,7 +490,7 @@ export const UpstreamBindPlugin: Plugin = {
                </div>`
             : '';
 
-        const when = last || about?.updatedAt || null;
+        const when = last || about?.pushedAt || null;
         const subParts = [`${downs.length} 个下游`];
         if (when) subParts.push(`${relativeTime(when)}更新`);
         if (!currentUser) subParts.push('未登录');
@@ -724,13 +729,19 @@ export const UpstreamBindPlugin: Plugin = {
         const about = state.about.get(key);
         if (!about) return;
         const last = state.lastCommit.get(key);
+        const pushed = about.pushedAt;
+        // 「最后提交」取默认分支、「最近推送」含其它分支，两者本来就不同源。
+        // 只差不到一小时属于同一批活动，只显示最后提交，避免看起来自相矛盾。
+        const extra: Array<[string, string, string?]> = [
+          ['最后提交', last ? `${formatDate(last)}（${relativeTime(last)}）` : '—'],
+        ];
+        if (pushed && (!last || isLater(pushed, last))) {
+          extra.push(['最近推送', `${formatDate(pushed)}（${relativeTime(pushed)}）`, '含其它分支的推送']);
+        }
         showAboutPopover({
           about,
           anchor,
-          extraMeta: [
-            ['最近推送', about.updatedAt ? `${formatDate(about.updatedAt)}（${relativeTime(about.updatedAt)}）` : '—'],
-            ['最后提交', last ? `${formatDate(last)}（${relativeTime(last)}）` : '—'],
-          ],
+          extraMeta: extra,
           onClose: () => {
             if (state.dirty) renderDetail();
           },

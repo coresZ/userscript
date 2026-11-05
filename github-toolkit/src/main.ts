@@ -10,7 +10,7 @@ import { whenIdle } from './core/layers';
 import { escapeHtml } from './core/html';
 import { builtinPlugins, DEFAULT_ENABLED } from './plugins';
 
-const TOOLKIT_VERSION = '2.9.0';
+const TOOLKIT_VERSION = '2.9.1';
 /** 记住上次停留的 Tab：跳页、重开面板都回到这里 */
 const TAB_KEY = 'panel-tab';
 
